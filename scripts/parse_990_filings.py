@@ -5,17 +5,8 @@
 # Started on Feb 20th
 # Ended on TBD
 
-# Initialize directories, paths, and other methods
+# Initialize directory paths, classes, constants, packages, and other methods
 from utils import *
-
-# Type hints
-from typing import Sequence, Union, Dict
-
-# Constants needed to parse IRS 990s
-from constants import HEADERS_990, WANT_SKED_GROUPS, WANT_SKED_PARTS
-
-# Custom class to define schema of row data
-from classes import RowData
 
 # IRS parsing
 from irsx.xmlrunner import XMLRunner
@@ -23,8 +14,6 @@ from irsx.xmlrunner import XMLRunner
 # Data analysis, writing to parquet
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pandas as pd
-import numpy as np
 
 # Load data capture dictionary
 import json
@@ -49,17 +38,17 @@ def batch_save_to_parquet(
         verbose (bool, optional): Print number of parquet batches saved for debugging. Defaults to True.
     """
     schema = pa.schema(SCHEMA_990)
-    data = pd.DataFrame(rows, columns=HEADERS_990).fillna(
+    data = pd.DataFrame(data=rows, columns=HEADERS_990).fillna(
         "NaN"
     )  # Schema requires that all columns are strings
-    table = pa.Table.from_pandas(data, schema=schema)
+    table = pa.Table.from_pandas(data=data, schema=schema)
     pq.write_table(
         table,
         where=f"{BRONZE_PATH}/990_filings_parsed/parsed_990s_{year-1}_{partition_no}.parquet",
         compression="snappy",
     )
     if verbose:
-        print(f"Batch save no. {cycle_no}")
+        print(f"Batch save no. {partition_no}")
 
 
 @typechecked

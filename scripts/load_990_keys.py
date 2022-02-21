@@ -2,18 +2,17 @@
 
 ### ADD CREDIT TO NOTEBOOK INSTRUCTIONS
 
-# Iterating through Amazon IRS filings
+# Initialize directory paths, classes, constants, packages, and other methods
 from utils import *
-import time
-import datetime
+
+# Iterating through Amazon IRS filings
 from collections import deque
 import logging
 import boto3
-from typing import Deque, Iterable
 from concurrent.futures import (
     ProcessPoolExecutor,
     ThreadPoolExecutor,
-    as_completed,
+    as_completed,import datetime
     Future,
 )
 
