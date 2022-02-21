@@ -1,3 +1,5 @@
+"""For specifiying schema of method input/output variables."""
+
 from typing import TypedDict
 import numpy as np
 
