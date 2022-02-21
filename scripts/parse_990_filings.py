@@ -198,7 +198,7 @@ for year in range(start_year, end_year + 1):
         .to_numpy()
     )
     # For each key, parse the XML file as outlined in the data dictionary schema, save to parquet
-    ticker, start_here = 0, 0  # In case we need to start between cycles
+    ticker, start_here = 80001, 80001  # In case we need to start between cycles
     rows = []
     for key in key_list[start_here:]:
         ticker += 1
