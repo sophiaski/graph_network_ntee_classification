@@ -11,7 +11,7 @@ import os
 
 # Type hints
 from typeguard import typechecked
-from typing import Sequence, Union, Dict, Deque, Iterable
+from typing import Sequence, Union, Dict, Deque, Iterable, Mapping
 
 # Data analysis
 import pandas as pd

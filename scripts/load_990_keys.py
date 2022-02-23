@@ -17,7 +17,7 @@ from concurrent.futures import (
 
 
 @typechecked
-def get_keys_for_prefix(prefix: str) -> Iterable[str]:
+def get_keys_for_prefix(prefix: str, BUCKET: str) -> Iterable[str]:
     """Return a collection of all key names starting with the specified prefix.
 
     Args:
@@ -31,7 +31,7 @@ def get_keys_for_prefix(prefix: str) -> Iterable[str]:
 
     # See https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html
     paginator = client.get_paginator("list_objects_v2")
-    page_iterator = paginator.paginate(Bucket=BUCKET, Prefix=prefix)
+    page_iterator = paginator.paginate(Bucket="irs-form-990", Prefix=prefix)
 
     # A deque is a collection with O(1) appends and O(n) iteration
     results: Deque[str] = deque()
@@ -62,7 +62,6 @@ def main():
     for YEAR in range(2009, datetime.datetime.now().year + 1):
 
         logging.info(f"Starting year {YEAR}")
-        BUCKET: str = "irs-form-990"
         EARLIEST_YEAR: int = YEAR
         cur_year: int = YEAR
         first_prefix: int = EARLIEST_YEAR * 100
