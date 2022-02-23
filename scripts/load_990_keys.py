@@ -1,9 +1,8 @@
-"""Load the IRS 990 filing keys from Amazon."""
-
-### ADD CREDIT TO NOTEBOOK INSTRUCTIONS
-
 # Initialize directory paths, classes, constants, packages, and other methods
 from utils import *
+
+# Save filing keys to CSV
+import unicodecsv as csv
 
 # Iterating through Amazon IRS filings
 from collections import deque
@@ -12,20 +11,21 @@ import boto3
 from concurrent.futures import (
     ProcessPoolExecutor,
     ThreadPoolExecutor,
-    as_completed,import datetime
+    as_completed,
     Future,
 )
 
-# Save filing keys to CSV
-import unicodecsv as csv
 
-logging.basicConfig(
-    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
-)
-
-
+@typechecked
 def get_keys_for_prefix(prefix: str) -> Iterable[str]:
-    """Return a collection of all key names starting with the specified prefix."""
+    """Return a collection of all key names starting with the specified prefix.
+
+    Args:
+        prefix (str): Prefix from AWS.
+
+    Returns:
+        Iterable[str]: Key location of XML file.
+    """
     session = boto3.session.Session()
     client = session.client("s3")
 
@@ -47,37 +47,53 @@ def get_keys_for_prefix(prefix: str) -> Iterable[str]:
     return results
 
 
-for YEAR in range(2009, datetime.datetime.now().year + 1):
+def main():
+    """
+    Load the IRS 990 Filings keys from Registry of Open Data on AWS.
 
-    logging.info(f"Starting year {YEAR}")
-    BUCKET: str = "irs-form-990"
-    EARLIEST_YEAR = YEAR
-    cur_year = YEAR
-    first_prefix: int = EARLIEST_YEAR * 100
-    last_prefix: int = (cur_year + 1) * 100
+    I tweaked a script from Applied Nonprofit Research to obtain the listings
+    for  all filings found in the dataset.
 
-    start: float = time.time()
+    Article: https://appliednonprofitresearch.com/posts/2020/06/skip-the-irs-990-efile-indices/
+    """
+    logging.basicConfig(
+        format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
+    )
+    for YEAR in range(2009, datetime.datetime.now().year + 1):
 
-    # ProcessPoolExecutor starts a completely separate copy of Python for each worker
-    with ProcessPoolExecutor() as executor:
-        futures: Deque[Future] = deque()
-        for prefix in range(first_prefix, last_prefix):
-            future: Future = executor.submit(get_keys_for_prefix, str(prefix))
-            futures.append(future)
+        logging.info(f"Starting year {YEAR}")
+        BUCKET: str = "irs-form-990"
+        EARLIEST_YEAR: int = YEAR
+        cur_year: int = YEAR
+        first_prefix: int = EARLIEST_YEAR * 100
+        last_prefix: int = (cur_year + 1) * 100
 
-    # the name of the output file
-    outfile = open(f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{YEAR}.csv", "wb")
-    # start up a dictwriter, ignore extra rows
-    dw = csv.DictWriter(outfile, ["KEY"], extrasaction="ignore")
-    dw.writeheader()
+        start: float = time.time()
 
-    n = 0
-    for future in as_completed(futures):
-        keys: Iterable = future.result()
-        for key in keys:
-            dw.writerow({"KEY": int(key.replace("_public.xml", ""))})
-            n += 1
+        # ProcessPoolExecutor starts a completely separate copy of Python for each worker
+        with ProcessPoolExecutor() as executor:
+            futures: Deque[Future] = deque()
+            for prefix in range(first_prefix, last_prefix):
+                future: Future = executor.submit(get_keys_for_prefix, str(prefix))
+                futures.append(future)
 
-    elapsed: float = time.time() - start
+        # the name of the output file
+        outfile = open(f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{YEAR}.csv", "wb")
+        # start up a dictwriter, ignore extra rows
+        dw = csv.DictWriter(outfile, ["KEY"], extrasaction="ignore")
+        dw.writeheader()
 
-    logging.info("Discovered {:,} keys in {:,.1f} seconds.".format(n, elapsed))
+        n = 0
+        for future in as_completed(futures):
+            keys: Iterable = future.result()
+            for key in keys:
+                dw.writerow({"KEY": int(key.replace("_public.xml", ""))})
+                n += 1
+
+        elapsed: float = time.time() - start
+
+        logging.info("Discovered {:,} keys in {:,.1f} seconds.".format(n, elapsed))
+
+
+if __name__ == "__main__":
+    main()

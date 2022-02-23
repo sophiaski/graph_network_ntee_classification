@@ -1,10 +1,3 @@
-"""Iterate through the filing keys and extract text fields using IRSx parser"""
-
-### ADD CREDIT TO IRS COOKBOOK
-
-# Started on Feb 20th
-# Ended on TBD
-
 # Initialize directory paths, classes, constants, packages, and other methods
 from utils import *
 
@@ -41,7 +34,7 @@ def batch_save_to_parquet(
     data = pd.DataFrame(data=rows, columns=HEADERS_990).fillna(
         "NaN"
     )  # Schema requires that all columns are strings
-    table = pa.Table.from_pandas(data=data, schema=schema)
+    table = pa.Table.from_pandas(data, schema=schema)
     pq.write_table(
         table,
         where=f"{BRONZE_PATH}/990_filings_parsed/parsed_990s_{year-1}_{partition_no}.parquet",
@@ -162,48 +155,67 @@ def run_filing(key: np.int64, verbose: bool = False) -> RowData:
 ###########################################################
 ###########################################################
 
-# Load data capture dictionary
-DATA_CAPTURE_DICT = json.load(open(SCHEMA_PATH + "/xml_data_capture.json"))
 
-# Create simple schema
-SCHEMA_990 = {val: pa.string() for val in HEADERS_990}
-SCHEMA_990["object_id"] = pa.int64()
+def main():
+    """
+    Iterate through the filing keys and extract text fields using the IRSX parser.
 
-# What size chunks to partition parquet files by
-cycle = 10000
+    This script generalizes some of the data capture recipes from the IRSX Cookbook,
+    extracting from repeating and non-repeating fields on 990, 990PF and 990EZ forms,
+    from 2013 onwards.
 
-# Where are we starting the
-start_year = 2014
-end_year = 2014
-ticker, start_here = 0, 0
+    Link to repo: https://github.com/jsfenfen/irsx_cookbook
 
-for year in range(start_year, end_year + 1):
-    xml_runner = XMLRunner()
+    This parser takes a good amount of time to complete on a single computer.
 
-    # Import IRS key list saved from Amazon
-    key_list = (
-        cudf.read_csv(f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{year}.csv")
-        .KEY.to_arrow()
-        .to_numpy()
-    )
-    # For each key, parse the XML file as outlined in the data dictionary schema, save to parquet
-    ticker, start_here = 80001, 80001  # In case we need to start between cycles
-    rows = []
-    for key in key_list[start_here:]:
-        ticker += 1
-        # Do your analysis here
-        new_row = run_filing(key=key)
-        if new_row:
-            rows.append(new_row)
-        if ticker % 10 == 0:
-            print(ticker, end=" ")  # Only print every 10 records parsed.
-        # Batch save to parquet
-        if ticker % cycle == 0:
-            batch_save_to_parquet(
-                year=year,
-                rows=rows,
-                partition_no=int(ticker / cycle),
-            )
-            rows = []
-    # Get the rest of the rows, save as "999"th cycle
-    batch_save_to_parquet(year=year, ticker=ticker, rows=rows)
+    Started on Feb 20th
+    Ended on XXX
+    """
+    # Load data capture dictionary
+    DATA_CAPTURE_DICT = json.load(open(SCHEMA_PATH + "/xml_data_capture.json"))
+
+    # Create simple schema
+    SCHEMA_990 = {val: pa.string() for val in HEADERS_990}
+    SCHEMA_990["object_id"] = pa.int64()
+
+    # What size chunks to partition parquet files by
+    cycle = 10000
+
+    # Where are we starting the
+    start_year = 2014
+    end_year = 2014
+    ticker, start_here = 0, 0
+
+    for year in range(start_year, end_year + 1):
+        xml_runner = XMLRunner()
+
+        # Import IRS key list saved from Amazon
+        key_list = (
+            cudf.read_csv(f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{year}.csv")
+            .KEY.to_arrow()
+            .to_numpy()
+        )
+        # For each key, parse the XML file as outlined in the data dictionary schema, save to parquet
+        ticker, start_here = 170000, 170000  # In case we need to start between cycles
+        rows = []
+        for key in key_list[start_here:]:
+            ticker += 1
+            print(ticker)
+            # Do your analysis here
+            new_row = run_filing(key=key)
+            if new_row:
+                rows.append(new_row)
+            # Batch save to parquet
+            if ticker % cycle == 0:
+                batch_save_to_parquet(
+                    year=year,
+                    rows=rows,
+                    partition_no=int(ticker / cycle),
+                )
+                rows = []
+        # Get the rest of the rows, save as "999"th cycle
+        batch_save_to_parquet(year=year, ticker=ticker, rows=rows)
+
+
+if __name__ == "__main__":
+    main()
