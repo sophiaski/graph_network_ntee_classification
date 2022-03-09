@@ -77,7 +77,7 @@ def main():
                 futures.append(future)
 
         # the name of the output file
-        outfile = open(f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{YEAR}.csv", "wb")
+        outfile = open(f"{BRONZE_PATH}990_filing_keys/filing_numbers_{YEAR}.csv", "wb")
         # start up a dictwriter, ignore extra rows
         dw = csv.DictWriter(outfile, ["KEY"], extrasaction="ignore")
         dw.writeheader()

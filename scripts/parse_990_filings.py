@@ -4,11 +4,6 @@ from utils import *
 # IRS parsing
 from irsx.xmlrunner import XMLRunner
 
-
-# Data analysis, writing to parquet
-import pyarrow as pa
-import pyarrow.parquet as pq
-
 # Load data capture dictionary
 import json
 
@@ -35,7 +30,7 @@ def batch_save_to_parquet(
     table = pa.Table.from_pandas(data, schema=schema)
     pq.write_table(
         table,
-        where=f"{BRONZE_PATH}/990_filings_parsed/parsed_990s_{year-1}_{partition_no}.parquet",
+        where=f"{BRONZE_PATH}990_filings_parsed/parsed_990s_{year-1}_{partition_no}.parquet",
         compression="snappy",
     )
     if verbose:
@@ -160,7 +155,7 @@ def run_filing(
 xml_runner = XMLRunner()
 
 # Data dictionary used to extract fields from XML files parsed by IRSx
-DATA_CAPTURE_DICT = json.load(open(SCHEMA_PATH + "/xml_data_capture.json"))
+DATA_CAPTURE_DICT = json.load(open(f"{SCHEMA_PATH}xml_data_capture.json"))
 
 # Schema of output dataset
 SCHEMA_990 = {val: pa.string() for val in HEADERS_990}
@@ -186,18 +181,18 @@ def main():
     cycle = 10000
 
     # Where are we starting the
-    start_year = 2014
-    end_year = 2014
+    start_year = 2018
+    end_year = 2018
 
     # For each key, parse the XML file as outlined in the data dictionary schema, save to parquet
     # In case we need to start at a specific key
-    ticker, start_here = 220000, 220000
+    ticker, start_here = 150000, 150000
 
     for year in range(start_year, end_year + 1):
 
         # Import IRS key list saved from Amazon
         key_list = pd.read_csv(
-            f"{BRONZE_PATH}/990_filing_keys/filing_numbers_{year}.csv"
+            f"{BRONZE_PATH}990_filing_keys/filing_numbers_{year}.csv"
         ).KEY.to_numpy()
 
         rows = []
