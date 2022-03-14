@@ -1,32 +1,77 @@
 """Constants used in scripts."""
 
-# Model variables
-SEED = 42
+# Model experiments set-up
+SEED = 117
+FRAC = 0.02
 EXPERIMENT_KEYS = [
     ["broad", "ntee"],
-    ["stratify_sklearn", "stratify_none"],
-    ["train", "validation", "test"],
+    ["sklearn", "none"],
+    ["train", "valid"],
 ]
-
-# method: grid, random, bayesian
-# Random reveals what values are not very good, then reduce space to do grid search
-
-parameter_dict = {
-    "optimizer": {"values": ["adam", "sgd"]},
-    "fc_layer_size": {"values": [128, 256, 512]},
-    "dropout": {"values": [0.3, 0.4, 0.5]},
-    "epochs": {"values": [2, 3, 4]},
-    "max_length": {"values": [64, 128]},
-    "batch_size": {"values": [8, 16, 32]},
-    "lr": {"values": [2e-05, 3e-05, 5e-05]},
+SWEEP_INIT = {
+    "optimizer": "adam",
+    "learning_rate": 5e-05,
+    "epochs": 2,
+    "batch_size": 32,
+    "perc_warmup_steps": 0.1,
+    "max_length": 64,
+    "clip_grad": True,
+    "frac": 0.06,
 }
-sweep_config = {
+
+# Very broad random search
+SWEEP_CONFIG_Mar12 = {
     "method": "random",
-    "metric": {"goal": "minimize", "name": "loss"},
-    "parameters": parameter_dict,
+    "metric": {"name": "val_loss", "goal": "minimize"},
+    "parameters": {
+        "optimizer": {"values": ["adam"]},
+        "learning_rate": {"values": [0.001, 0.0001, 0.00002, 0.00003, 0.00005]},
+        "epochs": {"values": [2, 3]},
+        "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
+        "batch_size": {"values": [8, 16, 32]},
+        "perc_warmup_steps": {"values": [0, 0.01, 0.1, 0.25]},
+        "clip_grad": {"values": [True, False]},
+        "max_length": {"values": [64, 128, 256]},
+        "frac": {"values": [0.25, 0.5, 0.75]},
+    },
 }
 
-# the header rows as they'll appear in the output
+# More constrained random search
+SWEEP_CONFIG_Mar13 = {
+    "method": "random",
+    "metric": {"name": "val_loss", "goal": "minimize"},
+    "parameters": {
+        "optimizer": {"values": ["adam"]},
+        "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
+        "learning_rate": {"values": [0.00003, 0.00005]},
+        "epochs": {"values": [1, 2]},
+        "batch_size": {"values": [8, 16, 32]},
+        "perc_warmup_steps": {"values": [0.1, 0.25]},
+        "clip_grad": {"values": [False]},
+        "max_length": {"values": [64]},
+        "frac": {"values": [0.7, 0.9]},
+        "replacement": {"values": [True]},
+    },
+}
+
+# Final baseline grid search
+SWEEP_CONFIG = {
+    "method": "grid",
+    "metric": {"name": "val_loss", "goal": "minimize"},
+    "parameters": {
+        "optimizer": {"values": ["adam"]},
+        "classifier_dropout": {"values": [0.3]},
+        "learning_rate": {"values": [0.00003, 0.00005]},
+        "epochs": {"values": [2]},
+        "batch_size": {"values": [16, 32]},
+        "perc_warmup_steps": {"values": [0.25]},
+        "clip_grad": {"values": [False]},
+        "max_length": {"values": [64]},
+        "frac": {"values": [1.0]},
+    },
+}
+
+# The header rows as they'll appear in the output
 HEADERS_990 = [
     "object_id",
     "ein",

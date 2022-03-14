@@ -186,7 +186,7 @@ def main():
 
     # For each key, parse the XML file as outlined in the data dictionary schema, save to parquet
     # In case we need to start at a specific key
-    ticker, start_here = 150000, 150000
+    ticker, start_here = 300000, 300000
 
     for year in range(start_year, end_year + 1):
 

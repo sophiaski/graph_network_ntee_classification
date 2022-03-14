@@ -1,14 +1,12 @@
 """For specifiying schema of method input/output variables."""
 
-from typing import TypedDict, Tuple, List, Sequence, Dict
-from torch.utils.data import TensorDataset
-from torch import Tensor
-import numpy as np
-import pandas as pd
+from typing import TypedDict
+
+from numpy import int64
 
 
 class RowData(TypedDict, total=False):
-    object_id: np.int64
+    object_id: int64
     ein: str
     form_type: str
     submission_ts: str
@@ -28,25 +26,45 @@ class RowData(TypedDict, total=False):
     program_descript_4: str
 
 
+from numpy import ndarray
+from torch.utils.data import TensorDataset
+from torch import Tensor
+from typing import Tuple
+
+
 class ExperimentDataSplit(TypedDict, total=False):
-    train: Tuple[np.ndarray, np.ndarray]
-    validation: Tuple[np.ndarray, np.ndarray]
-    test: Tuple[np.ndarray, np.ndarray]
-    train_tensor: TensorDataset
-    train_class_weights: Tensor
-    validation_tensor: TensorDataset
-    test_tensor: TensorDataset
-    size: Tuple[int, int, int]
+    train: Tuple[ndarray, ndarray]
+    valid: Tuple[ndarray, ndarray]
+    test: Tuple[ndarray, ndarray]
+    split_size: Tuple[int, int, int]
+    tensor_train: TensorDataset
+    tensor_valid: TensorDataset
+    tensor_test: TensorDataset
+    class_weights_train: Tensor
+
+
+from pandas import DataFrame
+from typing import Dict
 
 
 class ExperimentData(TypedDict, total=False):
-    data: pd.DataFrame
+    data: DataFrame
+    num_labels: int
     target2group: Dict[int, str]
     group2name: Dict[str, str]
     stratify_sklearn: ExperimentDataSplit
     stratify_none: ExperimentDataSplit
 
 
-class ExperimentDict(TypedDict, total=True):
-    broad: ExperimentData
-    ntee: ExperimentData
+# class ExperimentDict(TypedDict, total=True):
+#     broad: ExperimentData
+#     ntee: ExperimentData
+
+
+from torch.utils.data import DataLoader
+
+
+class DataLoaderDict(TypedDict, total=False):
+    train: DataLoader
+    valid: DataLoader
+    test: DataLoader

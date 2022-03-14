@@ -1,8 +1,12 @@
 # Project folders...for now
 notebooks/
 data/
+gifs/consume*
 schemas/
+models/
+glove/
 scripts/whats_next.py
+scripts/test*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
