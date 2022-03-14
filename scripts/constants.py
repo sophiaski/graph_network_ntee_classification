@@ -54,17 +54,17 @@ SWEEP_CONFIG_Mar13 = {
     },
 }
 
-# Final baseline grid search
+# Final baseline random search, switching to maximizing accuracy
 SWEEP_CONFIG = {
-    "method": "grid",
-    "metric": {"name": "val_loss", "goal": "minimize"},
+    "method": "random",
+    "metric": {"name": "val_acc", "goal": "maximize"},
     "parameters": {
         "optimizer": {"values": ["adam"]},
-        "classifier_dropout": {"values": [0.3]},
-        "learning_rate": {"values": [0.00003, 0.00005]},
-        "epochs": {"values": [2]},
-        "batch_size": {"values": [16, 32]},
-        "perc_warmup_steps": {"values": [0.25]},
+        "classifier_dropout": {"values": [0.1, 0.3, 0.4]},
+        "learning_rate": {"values": [0.00002, 0.00003, 0.00005]},
+        "epochs": {"values": [1]},
+        "batch_size": {"values": [16, 32, 64]},
+        "perc_warmup_steps": {"values": [0, 0.25, 0.5]},
         "clip_grad": {"values": [False]},
         "max_length": {"values": [64]},
         "frac": {"values": [1.0]},

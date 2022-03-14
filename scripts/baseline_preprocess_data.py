@@ -12,7 +12,9 @@ BROAD_CAT_MAPPER = dict(
 
 
 @typechecked
-def load_and_update_dataframes() -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_update_dataframes(
+    remove_other_fields: bool = True,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load in benchmark dataset and do some pre-pre-processing before incorporating into model.
 
     Returns:
@@ -43,11 +45,17 @@ def load_and_update_dataframes() -> Tuple[pd.DataFrame, pd.DataFrame]:
         )
 
         df["broad_cat"] = df["NTEE1"].map(BROAD_CAT_MAPPER)
-        df.drop(
-            [c for c in df if c not in HEADERS_BENCHMARK], axis="columns", inplace=True
-        )
-
-    return train[HEADERS_BENCHMARK], test[HEADERS_BENCHMARK]
+        if remove_other_fields:
+            # Not sure if this is needed
+            df.drop(
+                [c for c in df if c not in HEADERS_BENCHMARK],
+                axis="columns",
+                inplace=True,
+            )
+    if remove_other_fields:
+        return train[HEADERS_BENCHMARK], test[HEADERS_BENCHMARK]
+    else:
+        return train[["EIN"] + HEADERS_BENCHMARK], test[["EIN"] + HEADERS_BENCHMARK]
 
 
 @typechecked

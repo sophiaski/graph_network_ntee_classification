@@ -1,4 +1,4 @@
-"""All of the methods used to leverage BERT Sequence Classification and hyperparameter tuning w/ W&B"""
+"""All of the methods used with BERT Sequence Classification and hyperparameter tuning w/ W&B"""
 
 # Initialize directory paths, classes, constants, packages, and other methods
 from utils import *
@@ -25,8 +25,8 @@ import torch.optim as optim
 # Scheduler
 from transformers import get_linear_schedule_with_warmup
 
-# SoftMax
-from torch.nn.functional import softmax
+# SoftMax, Normalize
+from torch.nn.functional import softmax, normalize
 
 # Metrics
 from torchmetrics import Accuracy, F1Score
@@ -364,7 +364,7 @@ def tokenize_data(
                     )
                     class_weights = 1.0 / class_counts
                     if sampler == "weighted_norm":
-                        class_weights = F.normalize(input=class_weights, dim=0)
+                        class_weights = normalize(input=class_weights, dim=0)
                         # if verbose:
                         #     print(f"Normalized class weights: {class_weights}")
                     experiment_dict[f"stratify_{strat_type}"][
