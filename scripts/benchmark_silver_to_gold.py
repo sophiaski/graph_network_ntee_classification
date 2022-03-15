@@ -6,16 +6,16 @@ from utils import *
 def create_gold(
     include_ein: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Load in benchmark dataset and do some pre-pre-processing before incorporating into model.
+    """Load in benchmark dataset and do some additional processing before incorporating into model.
 
     Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]: Output train and test dataframes.
+        Tuple[pd.DataFrame, pd.DataFrame]: Gold train and test dataframes.
     """
 
     # Get mapper that converts from NTEE1 to Broad category
     from collections import ChainMap
 
-    # Process global constants
+    # Get constants
     BROAD_CAT_MAPPER = dict(
         ChainMap(*[{letter: k for letter in v} for k, v in BROAD_CAT_DICT.items()])
     )
@@ -56,7 +56,7 @@ def create_gold(
 
 def main():
     """
-    Create dataset for the model, saving to parquet for easy access.
+    Create gold (model) dataset, saving to parquet for easy access.
     """
     train, test = create_gold(include_ein=False)
     save_to_parquet(
