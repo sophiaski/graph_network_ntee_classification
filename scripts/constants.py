@@ -72,7 +72,7 @@ SWEEP_CONFIG = {
 }
 
 # The header rows as they'll appear in the output
-HEADERS_990 = [
+IRSX_HEADERS = [
     "object_id",
     "ein",
     "form_type",
@@ -92,6 +92,28 @@ HEADERS_990 = [
     "program_descript_3",
     "program_descript_4",
 ]
+
+GRANTS_HEADERS = [
+    "granteeein",
+    "grantee",
+    "grantdesc",
+    "cashgrantamt",
+    "grantor",
+    "grantorein",
+    "taxperiod",
+    "granteecity",
+    "granteestate",
+    "granteezipcode",
+    "grantorcity",
+    "grantorstate",
+    "grantorzipcode",
+    "grantor_location",
+    "grantee_location",
+    "grantor_info",
+    "grantee_info",
+]
+
+BENCHMARK_HEADERS = ["sequence", "NTEE1", "broad_cat"]
 
 # Available schedule types in IRSx, not used in scripts, just FYI
 SCHEDULES_990 = [

@@ -110,13 +110,10 @@ def load_data(
     """
     df_list = []
     for val in ["train", "test"]:
-        filepath = f"{BENCHMARK_MODEL}df_ucf_{val}.parquet"
+        filepath = f"{BENCHMARK_GOLD_PATH}df_ucf_{val}.parquet"
         df_list.append(pd.read_parquet(filepath))
     data = (
-        pd.concat(df_list)
-        .sample(frac=frac, random_state=seed)
-        .rename({"input": "sequence"}, axis=1)
-        .reset_index(drop=True)
+        pd.concat(df_list).sample(frac=frac, random_state=seed).reset_index(drop=True)
     )
     if verbose:
         print(f"SAMPLING {round(frac*100,2)}% OF DATA...")

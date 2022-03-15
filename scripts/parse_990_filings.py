@@ -24,7 +24,7 @@ def batch_save_to_parquet(
         verbose (bool, optional): Print number of parquet batches saved for debugging. Defaults to True.
     """
     schema = pa.schema(SCHEMA_990)
-    data = pd.DataFrame(data=rows, columns=HEADERS_990).fillna(
+    data = pd.DataFrame(data=rows, columns=IRSX_HEADERS).fillna(
         "NaN"
     )  # Schema requires that all columns are strings
     table = pa.Table.from_pandas(data, schema=schema)
@@ -158,7 +158,7 @@ xml_runner = XMLRunner()
 DATA_CAPTURE_DICT = json.load(open(f"{SCHEMA_PATH}xml_data_capture.json"))
 
 # Schema of output dataset
-SCHEMA_990 = {val: pa.string() for val in HEADERS_990}
+SCHEMA_990 = {val: pa.string() for val in IRSX_HEADERS}
 SCHEMA_990["object_id"] = pa.int64()
 
 

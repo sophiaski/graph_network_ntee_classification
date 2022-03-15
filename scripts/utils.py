@@ -43,17 +43,41 @@ logging.getLogger().setLevel(logging.ERROR)
 # Get root directory and other directory paths to use in scripts
 PROJECT_ROOT = os.path.dirname(os.path.abspath(os.curdir))
 SCHEMA_PATH = f"{PROJECT_ROOT+'/schemas/'}"
+MODELS_PATH = f"{PROJECT_ROOT+'/models/'}"
+
+# For saving intermediate dataset processing
 BRONZE_PATH = f"{PROJECT_ROOT+'/data/bronze/'}"
 SILVER_PATH = f"{PROJECT_ROOT+'/data/silver/'}"
 GOLD_PATH = f"{PROJECT_ROOT+'/data/gold/'}"
-BENCHMARK_MODEL = f"{PROJECT_ROOT+'/data/gold/benchmark/to_model/'}"
-MODEL_SAVES = f"{PROJECT_ROOT+'/models/'}"
-TRAIN_PATH = f"{PROJECT_ROOT+'/data/gold/benchmark/train/'}"
-TEST_PATH = f"{PROJECT_ROOT+'/data/gold/benchmark/test/'}"
-GLOVE_PATH = f"{PROJECT_ROOT+'/glove/'}"
-for PATH in [SCHEMA_PATH, BRONZE_PATH, SILVER_PATH, GOLD_PATH]:
-    if not os.path.exists(PATH):
-        os.makedirs(PATH)
+
+# For loading and saving the benchmark dataset
+BENCHMARK_SILVER_PATH = f"{SILVER_PATH+'benchmark/'}"
+BENCHMARK_GOLD_PATH = f"{GOLD_PATH+'benchmark/'}"
+
+# For loading and saving the grants dataset
+GRANTS_SILVER_PATH = f"{SILVER_PATH+'grants/'}"
+GRANTS_GOLD_PATH = f"{GOLD_PATH+'grants/'}"
+
+
+@typechecked
+def save_to_parquet(
+    data: pd.DataFrame, cols: Sequence[str], loc: str, filename: str
+) -> None:
+    """Save the pre-processed dataframes into parquet files.
+
+    Args:
+        data (pd.DataFrame): Input Pandas DataFrame.
+        cols (Sequence[str]): Column names.
+        loc (str): Folder location.
+        filename (str): Filename.
+    """
+    schema = pa.schema({val: pa.string() for val in cols})
+    table = pa.Table.from_pandas(data, schema=schema)
+    pq.write_table(
+        table,
+        where=f"{loc}{filename}.parquet",
+        compression="snappy",
+    )
 
 
 @typechecked
