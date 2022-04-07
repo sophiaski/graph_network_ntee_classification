@@ -5,6 +5,7 @@ gifs/consume*
 schemas/
 models/
 glove/
+emb/
 scripts/whats_next.py
 scripts/test*
 

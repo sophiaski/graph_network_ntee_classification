@@ -21,6 +21,9 @@ import time
 from collections import Counter
 import random
 
+# Graph time!
+import networkx as nx
+
 # Writing to parquet
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -44,6 +47,7 @@ logging.getLogger().setLevel(logging.ERROR)
 PROJECT_ROOT = os.path.dirname(os.path.abspath(os.curdir))
 SCHEMA_PATH = f"{PROJECT_ROOT+'/schemas/'}"
 MODELS_PATH = f"{PROJECT_ROOT+'/models/'}"
+EMBEDDINGS_PATH = f"{PROJECT_ROOT+'/emb/'}"
 
 # For saving intermediate dataset processing
 BRONZE_PATH = f"{PROJECT_ROOT+'/data/bronze/'}"
@@ -58,12 +62,21 @@ BENCHMARK_GOLD_PATH = f"{GOLD_PATH+'benchmark/'}"
 GRANTS_SILVER_PATH = f"{SILVER_PATH+'grants/'}"
 GRANTS_GOLD_PATH = f"{GOLD_PATH+'grants/'}"
 
+# For loading and saving the graph data
+GRAPH_GOLD_PATH = f"{GOLD_PATH+'graph/'}"
+
+
+@typechecked
+def Merge(dict1: Mapping, dict2: Mapping) -> None:
+    """Merge two dictionaries"""
+    return dict1.update(dict2)
+
 
 @typechecked
 def save_to_parquet(
     data: pd.DataFrame, cols: Sequence[str], loc: str, filename: str
 ) -> None:
-    """Save the pre-processed dataframes into parquet files.
+    """Save the processed dataframes into parquet files.
 
     Args:
         data (pd.DataFrame): Input Pandas DataFrame.
@@ -74,10 +87,74 @@ def save_to_parquet(
     schema = pa.schema({val: pa.string() for val in cols})
     table = pa.Table.from_pandas(data, schema=schema)
     pq.write_table(
-        table,
-        where=f"{loc}{filename}.parquet",
-        compression="snappy",
+        table, where=f"{loc}{filename}.parquet", compression="snappy",
     )
+
+
+@typechecked
+def load_parquet(
+    loc: str, filename: str, frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+) -> pd.DataFrame:
+    """Load in the cleaned grants data.
+
+    Args:
+        frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
+        seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
+        verbose (bool, optional): Print Pandas DataFrame shape. Defaults to True.
+
+    Returns:
+        pd.DataFrame: Gold grants DataFrame.
+    """
+    # Load in data
+    filepath = f"{loc}{filename}.parquet"
+
+    df = (
+        pd.read_parquet(filepath)
+        .sample(frac=frac, random_state=seed)
+        .reset_index(drop=True)
+        .replace("", pd.NA)
+    )
+
+    # Check it out
+    if verbose:
+        print(f"Sampling {round(frac*100,2)}% of {filename.upper()} data...")
+        print(f"\tShape: {df.shape}")
+
+    # Return dataframe with columns sorted alphabetically
+    return df[sorted(df.columns)]
+
+
+@typechecked
+def load_json(loc: str, filename: str) -> Dict[str, str]:
+    """Load a json file as a python dictionary.
+
+    Args:
+        loc (str): Save location.
+        filename (str): Name of file.
+
+    Returns:
+        Dict[str, str]: Dictionary that connects EINs to 990 fields {ein : field}
+    """
+    import json
+
+    # Opening JSON file
+    with open(f"{loc}{filename}.json") as infile:
+        return json.load(infile)
+
+
+@typechecked
+def save_to_json(data: Mapping, loc: str, filename: str) -> None:
+    """Save a dictionary to json.
+
+    Args:
+        data (Mapping): Input dictionary file.
+        loc (str): Save location.
+        filename (str): Name of file.
+    """
+    import json
+
+    with open(f"{loc}{filename}.json", "w") as outfile:
+        json.dump(data, outfile)
 
 
 @typechecked

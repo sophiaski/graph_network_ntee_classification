@@ -31,6 +31,8 @@ from torch.nn.functional import softmax, normalize
 # Metrics
 from torchmetrics import Accuracy, F1Score
 
+from bert_data import NGODataset
+
 
 @typechecked
 def build_data(
@@ -70,7 +72,9 @@ def build_data(
     # Load data
     from benchmark_process import load_benchmark
 
-    input_data = load_benchmark(merge_data=True, frac=frac, seed=seed, verbose=verbose)
+    input_data = load_benchmark(
+        merge_data=True, frac=frac, seed=seed, verbose=verbose
+    ).fillna("")
     # Encode labels as torch-friendly integers
     encoded_data_dict = encode_targets(
         data=input_data, cat_type=cat_type, verbose=verbose
@@ -120,11 +124,10 @@ def encode_targets(
         group2name = NTEE_NAME
 
     # Remove unlabeled data then reset index (easier to combine embeddings after), sorted by train->test->new
-    unlabeled_data = data[data[col_name] == unlabeled].copy().reset_index(drop=True)
+    unlabeled_data = data[data[col_name] == unlabeled].copy()
     data = (
         data[data[col_name] != unlabeled]
         .copy()
-        .reset_index(drop=True)
         .sort_values("benchmark_status", ascending=False)
     )
 
@@ -220,74 +223,33 @@ def stratify_by(
         seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
 
     Returns:
-        ExperimentDataSplit: Return tuples of train, validation, and test data; and sizes of each.
+        ExperimentDataSplit: Return train, validation, and test data; and sizes of each.
     """
-    from operator import itemgetter
-
-    # Make sure index is sorted, and save as mapper (to use later)
-    data.loc[:, "id"] = data.index.astype(int)
-    ein2id = data.set_index("ein")["id"].to_dict()
-    index2ein = {v: k for k, v in ein2id.items()}
 
     # Split into train+val and test (based on benchmark)
-
     # Sequence
-    X_trainval = data.loc[data["benchmark_status"] != "test", "sequence"].to_numpy()
-    X_test = data.loc[data["benchmark_status"] == "test", "sequence"].to_numpy()
-    # Targets
-    y_trainval = data.loc[data["benchmark_status"] != "test", "target"].to_numpy()
-    y_test = data.loc[data["benchmark_status"] == "test", "sequence"].to_numpy()
-    # Indexes
-    idx_trainval = data.loc[data["benchmark_status"] != "test", "id"].to_numpy()
-    idx_test = data.loc[data["benchmark_status"] != "test", "id"].to_numpy()
+    trainval = data[data["benchmark_status"] != "test"].copy()
+    test = data[data["benchmark_status"] == "test"].copy()
 
     if stratify:
         # Split train into train-val w/ stratification
-        (
-            X_train,
-            X_validation,
-            y_train,
-            y_validation,
-            idx_train,
-            idx_validation,
-        ) = train_test_split(
-            X_trainval,
-            y_trainval,
-            idx_trainval,
-            test_size=0.1,
-            stratify=y_trainval,
+        (train, validation,) = train_test_split(
+            trainval,
+            test_size=0.3,
+            stratify=trainval["target"].values,
             random_state=seed,
         )
     else:
-
         # Split train into train-val w/o stratifying
-        (
-            X_train,
-            X_validation,
-            y_train,
-            y_validation,
-            idx_train,
-            idx_validation,
-        ) = train_test_split(
-            X_trainval, y_trainval, idx_trainval, test_size=0.2, random_state=seed
+        (train, validation,) = train_test_split(
+            trainval, test_size=0.3, random_state=seed,
         )
-
-    # Updated index 2 EIN mappers (for each split!)
-    shuffled_ein_mappers = []
-    for shuffled_idxs in [idx_train, idx_validation, idx_test]:
-        new_mapper = dict(
-            zip(
-                np.arange(0, len(shuffled_idxs), dtype=int),
-                itemgetter(*shuffled_idxs)(index2ein),
-            )
-        )
-        shuffled_ein_mappers.append(new_mapper)
 
     return {
-        "train": (X_train, y_train, shuffled_ein_mappers[0]),
-        "valid": (X_validation, y_validation, shuffled_ein_mappers[1]),
-        "test": (X_test, y_test, shuffled_ein_mappers[2]),
-        "split_size": (len(y_train), len(y_validation), len(y_test)),
+        "train": train,
+        "valid": validation,
+        "test": test,
+        "split_size": (len(train), len(validation), len(test)),
     }
 
 
@@ -312,45 +274,24 @@ def tokenize_data(
         ExperimentData: Custom TypedDict that contains all of the information needed for model training.
     """
 
-    global func_encode_string
-
-    def func_encode_string(sequence: str) -> BatchEncoding:
-        """Apply encode_plus to an input sequence.
-
-        Args:
-            sequence (str): Sequence of words.
-
-        Returns:
-            BatchEncoding: Tokenized sequence.
-        """
-        return tokenizer.encode_plus(
-            sequence,
-            add_special_tokens=True,
-            truncation="longest_first",
-            padding="max_length",
-            max_length=max_length,
-            return_attention_mask=True,
-            return_tensors="pt",
-        )
-
     for strat_type in EXPERIMENT_KEYS[1]:
         if experiment_dict.get(f"stratify_{strat_type}"):
             if verbose:
-                print(f"\tSTRATIFY_{strat_type.upper()} TOKENIZING...")
+                print(f"\tGiven a stratification strategy ({strat_type.upper()}...")
             # Encode train, validation, test
             for split in EXPERIMENT_KEYS[2]:
                 if verbose:
-                    print(f"\t\t{split.upper()}")
+                    print(f"\t\tCreate a DataSet ({split.upper()}).")
                 # Extract (X,y) tuple
-                split_tuple = experiment_dict[f"stratify_{strat_type}"][split]
-                sequences = split_tuple[0]
-                targets = split_tuple[1]
+                split_df = experiment_dict[f"stratify_{strat_type}"][split]
 
                 experiment_dict[f"stratify_{strat_type}"][
-                    f"tensor_{split}"
-                ] = TensorDataset(input_ids, attention_masks, labels)
+                    f"dataset_{split}"
+                ] = NGODataset(dataframe=split_df, max_length=max_length)
                 # Add class weights for training data
                 if split == "train":
+                    targets = split_df["target"].values
+
                     class_counts = torch.tensor(
                         [val[1] for val in sorted(Counter(targets).items())]
                     )
@@ -368,8 +309,9 @@ def tokenize_data(
 
 @typechecked
 def get_dataloader(
-    data_train: TensorDataset,
-    data_validation: TensorDataset,
+    data_train: NGODataset,
+    data_validation: NGODataset,
+    data_test: NGODataset,
     class_weights_train: Tensor,
     batch_size: int,
 ) -> DataLoaderDict:
@@ -388,33 +330,28 @@ def get_dataloader(
     Returns:
         DataLoaderDict: Returns either train/val DataLoaders or the test DataLoader, which are iterables over the given dataset(s).
     """
-    # TEST NOT INCLUDED
-    # if not is_train:
-    #     # Sequential sampling for test
-    #     return {
-    #         "test": DataLoader(
-    #             dataset=data_test,
-    #             shuffle=False,
-    #             batch_size=batch_size,
-    #             num_workers=4,
-    #         )
-    #     }
 
     # Sample the input based on the passed weights.
     weighted_random_sampler = WeightedRandomSampler(
         weights=class_weights_train, num_samples=len(class_weights_train)
     )
     dataloader_train = DataLoader(
-        dataset=data_train,
-        sampler=weighted_random_sampler,
-        batch_size=batch_size,
-        num_workers=8,
+        dataset=data_train, sampler=weighted_random_sampler, batch_size=batch_size,
     )
     # Sequential sampling for validation
     dataloader_validation = DataLoader(
-        dataset=data_validation, shuffle=False, batch_size=batch_size, num_workers=4
+        dataset=data_validation, shuffle=False, batch_size=batch_size,
     )
-    return {"train": dataloader_train, "valid": dataloader_validation}
+
+    # Sequential sampling for validation
+    dataloader_test = DataLoader(
+        dataset=data_test, shuffle=False, batch_size=batch_size,
+    )
+    return {
+        "train": dataloader_train,
+        "valid": dataloader_validation,
+        "test": dataloader_test,
+    }
 
 
 @typechecked
@@ -442,7 +379,7 @@ def load_model(
         num_labels=num_labels,
         classifier_dropout=classifier_dropout,
         output_attentions=False,
-        output_hidden_states=False,
+        output_hidden_states=True,
     )
     if verbose:
         # Get all of the model's parameters as a list of tuples.
@@ -542,14 +479,16 @@ def train_epoch(
 
     # Progress bar that iterates over training dataloader
     for batch in progress_bar:
-
+        print(batch)
         # Sets gradients of all model parameters to zero.
         model.zero_grad(set_to_none=True)
-
+        for b in batch:
+            print(b)
+            print(type(b))
         # Process batched data, save to device
         batch = tuple(b.to(device) for b in batch)
         inputs = {
-            "input_ids": batch[0],
+            "input_ids": batch[0].to(device),
             "attention_mask": batch[1],
             "labels": batch[2],
         }
@@ -768,8 +707,9 @@ def train(config, cat_type, strat_type, sampler, verbose=True):
 
         # Dataloaders
         dataloader = get_dataloader(
-            data_train=data[f"stratify_{strat_type}"]["tensor_train"],
-            data_validation=data[f"stratify_{strat_type}"]["tensor_valid"],
+            data_train=data[f"stratify_{strat_type}"]["dataset_train"],
+            data_validation=data[f"stratify_{strat_type}"]["dataset_valid"],
+            data_test=data[f"stratify_{strat_type}"]["dataset_test"],
             class_weights_train=data[f"stratify_{strat_type}"]["class_weights_train"],
             batch_size=config.batch_size,
         )

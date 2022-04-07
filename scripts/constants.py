@@ -6,17 +6,18 @@ FRAC = 0.02
 EXPERIMENT_KEYS = [
     ["broad", "ntee"],
     ["sklearn", "none"],
-    ["train", "valid"],
+    ["train", "valid", "test"],
 ]
 SWEEP_INIT = {
     "optimizer": "adam",
     "learning_rate": 5e-05,
-    "epochs": 2,
+    "epochs": 1,
     "batch_size": 32,
+    "classifier_dropout": 0.3,
     "perc_warmup_steps": 0.1,
     "max_length": 64,
     "clip_grad": True,
-    "frac": 0.06,
+    "frac": 0.5,
 }
 
 # Very broad random search
@@ -55,7 +56,7 @@ SWEEP_CONFIG_Mar13 = {
 }
 
 # Final baseline random search, switching to maximizing accuracy
-SWEEP_CONFIG = {
+SWEEP_CONFIG_Mar14 = {
     "method": "random",
     "metric": {"name": "val_acc", "goal": "maximize"},
     "parameters": {
@@ -65,6 +66,24 @@ SWEEP_CONFIG = {
         "epochs": {"values": [1]},
         "batch_size": {"values": [16, 32, 64]},
         "perc_warmup_steps": {"values": [0, 0.25, 0.5]},
+        "clip_grad": {"values": [False]},
+        "max_length": {"values": [64]},
+        "frac": {"values": [1.0]},
+    },
+}
+
+# Final baseline grid search, switching to maximizing accuracy
+# SWEEP_CONFIG_Mar15
+SWEEP_CONFIG = {
+    "method": "random",
+    "metric": {"name": "val_acc", "goal": "maximize"},
+    "parameters": {
+        "optimizer": {"values": ["adam"]},
+        "classifier_dropout": {"values": [0.1, 0.2, 0.3, 0.4]},
+        "learning_rate": {"values": [0.00005, 0.00003, 0.00002]},
+        "epochs": {"values": [2, 3]},
+        "batch_size": {"values": [16, 32, 64]},
+        "perc_warmup_steps": {"values": [0, 0.1]},
         "clip_grad": {"values": [False]},
         "max_length": {"values": [64]},
         "frac": {"values": [1.0]},
@@ -94,26 +113,33 @@ IRSX_HEADERS = [
 ]
 
 GRANTS_HEADERS = [
-    "granteeein",
+    "grantee_ein",
     "grantee",
-    "grantdesc",
-    "cashgrantamt",
+    "grant_desc",
+    "cash_grant_amt",
     "grantor",
-    "grantorein",
-    "taxperiod",
-    "granteecity",
-    "granteestate",
-    "granteezipcode",
-    "grantorcity",
-    "grantorstate",
-    "grantorzipcode",
+    "grantor_ein",
+    "tax_period",
+    "grantee_city",
+    "grantee_state",
+    "grantee_zipcode",
+    "grantor_city",
+    "grantor_state",
+    "grantor_zipcode",
     "grantor_location",
     "grantee_location",
     "grantor_info",
     "grantee_info",
 ]
 
-BENCHMARK_HEADERS = ["sequence", "NTEE1", "broad_cat"]
+BENCHMARK_HEADERS = [
+    "ein",
+    "taxpayer_name",
+    "return_type",
+    "sequence",
+    "NTEE1",
+    "broad_cat",
+]
 
 # Available schedule types in IRSx, not used in scripts, just FYI
 SCHEDULES_990 = [
@@ -204,3 +230,23 @@ NTEE_NAME = {
     "Y": "Mutual/Membership Benefit Organizations, Other",
     "Z": "Unknown, Unclassified",
 }
+
+# Graph! Simple
+NODE_COLS = [
+    "ein",
+    "node_type",
+    "sequence",
+    "NTEE1",
+    "broad_cat",
+    "benchmark_status",
+]
+EDGE_COLS = [
+    "src",
+    "dst",
+    "tax_period",
+    "cash_grant_amt",
+]
+
+# Graph! Complex
+NODE_COLS_COMPLEX = []
+EDGE_COLS_COMPLEX = []

@@ -30,25 +30,26 @@ from numpy import ndarray
 from torch.utils.data import TensorDataset
 from torch import Tensor
 from typing import Tuple
+from pandas import DataFrame
+from typing import Dict
+
+from bert_data import NGODataset
 
 
 class ExperimentDataSplit(TypedDict, total=False):
-    train: Tuple[ndarray, ndarray]
-    valid: Tuple[ndarray, ndarray]
-    test: Tuple[ndarray, ndarray]
+    train: DataFrame
+    valid: DataFrame
+    test: DataFrame
     split_size: Tuple[int, int, int]
-    tensor_train: TensorDataset
-    tensor_valid: TensorDataset
-    tensor_test: TensorDataset
+    dataset_train: NGODataset
+    dataset_valid: NGODataset
+    dataset_test: NGODataset
     class_weights_train: Tensor
-
-
-from pandas import DataFrame
-from typing import Dict
 
 
 class ExperimentData(TypedDict, total=False):
     data: DataFrame
+    data_unlabeled: DataFrame
     num_labels: int
     target2group: Dict[int, str]
     group2name: Dict[str, str]
@@ -58,7 +59,7 @@ class ExperimentData(TypedDict, total=False):
 
 # class ExperimentDict(TypedDict, total=True):
 #     broad: ExperimentData
-#     ntee: ExperimentData
+#     ntee: ExperimentDsata
 
 
 from torch.utils.data import DataLoader
