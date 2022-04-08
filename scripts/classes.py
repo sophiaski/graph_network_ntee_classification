@@ -1,8 +1,13 @@
 """For specifiying schema of method input/output variables."""
 
 from typing import TypedDict
-
 from numpy import int64
+from torch import Tensor
+from typing import Tuple
+from pandas import DataFrame
+from typing import Dict
+from dataset import NGODataset
+from torch.utils.data import DataLoader
 
 
 class RowData(TypedDict, total=False):
@@ -26,16 +31,6 @@ class RowData(TypedDict, total=False):
     program_descript_4: str
 
 
-from numpy import ndarray
-from torch.utils.data import TensorDataset
-from torch import Tensor
-from typing import Tuple
-from pandas import DataFrame
-from typing import Dict
-
-from bert_data import NGODataset
-
-
 class ExperimentDataSplit(TypedDict, total=False):
     train: DataFrame
     valid: DataFrame
@@ -55,14 +50,6 @@ class ExperimentData(TypedDict, total=False):
     group2name: Dict[str, str]
     stratify_sklearn: ExperimentDataSplit
     stratify_none: ExperimentDataSplit
-
-
-# class ExperimentDict(TypedDict, total=True):
-#     broad: ExperimentData
-#     ntee: ExperimentDsata
-
-
-from torch.utils.data import DataLoader
 
 
 class DataLoaderDict(TypedDict, total=False):

@@ -9,10 +9,6 @@ from sklearn import preprocessing
 # Splitting data
 from sklearn.model_selection import train_test_split
 
-# Tokenizer
-from joblib import Parallel, delayed
-from transformers import BatchEncoding, BertTokenizer
-
 # DataLoader
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
@@ -31,7 +27,8 @@ from torch.nn.functional import softmax, normalize
 # Metrics
 from torchmetrics import Accuracy, F1Score
 
-from bert_data import NGODataset
+# PyTorch Dataset
+from dataset import NGODataset
 
 
 @typechecked
@@ -69,7 +66,9 @@ def build_data(
         raise ValueError("strat_type must be 'both','none', or 'sklearn'.")
     if sampler not in ["norm", "weighted_norm"]:
         raise ValueError("sampler must be 'norm' or 'weighted_norm'.")
+
     # Load data
+    from benchmark_process import load_benchmark
     from benchmark_process import load_benchmark
 
     input_data = load_benchmark(
@@ -87,9 +86,7 @@ def build_data(
         verbose=verbose,
     )
     # Tokenize and convert data into tensors
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     experiment_dict = tokenize_data(
-        tokenizer=tokenizer,
         experiment_dict=split_data_dict,
         max_length=max_length,
         sampler=sampler,
@@ -192,17 +189,17 @@ def split_data(
         print(f"\nSPLITTING DATA INTO TRAIN/DEV/TEST")
     data = experiment_dict["data"]
 
-    if strat_type == "none":  # Use original benchmark split
+    if strat_type == "none":  # No stratified sampling
         experiment_dict["stratify_none"] = stratify_by(
             data=data, stratify=False, seed=seed
         )
-    elif strat_type == "sklearn":  # Use stratified samplying
+    elif strat_type == "sklearn":  # Use stratified sampling
         experiment_dict["stratify_sklearn"] = stratify_by(
             data=data, stratify=True, seed=seed
         )
     if verbose:
         print(
-            f"\tTRAIN/DEV/TEST SPLIT: {experiment_dict[f'stratify_{strat_type}']['split_size']}"
+            f"\Train/Valid/Test split size: {experiment_dict[f'stratify_{strat_type}']['split_size']}"
         )
     return experiment_dict
 
@@ -217,17 +214,14 @@ def stratify_by(
     https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
 
     Args:
-        X (ndarray): Sequences.
-        y (ndarray): Target value.
+        data (pd.DataFrame): 
         stratify (bool, optional): If True, data is split in a stratified fashion, using the class labels. If False, keep original benchmark split for test, stratify the train/val.  Defaults to True.
         seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
 
     Returns:
         ExperimentDataSplit: Return train, validation, and test data; and sizes of each.
     """
-
-    # Split into train+val and test (based on benchmark)
-    # Sequence
+    # Split datafranmes into train+val and test (based on benchmark)
     trainval = data[data["benchmark_status"] != "test"].copy()
     test = data[data["benchmark_status"] == "test"].copy()
 
@@ -255,7 +249,6 @@ def stratify_by(
 
 @typechecked
 def tokenize_data(
-    tokenizer: BertTokenizer,
     experiment_dict: ExperimentData,
     max_length: int,
     sampler: str,
@@ -264,7 +257,6 @@ def tokenize_data(
     """For a given experiment / stratify strategy, tokenzie the train, validation, and test sets and save them as tensors.
 
     Args:
-        tokenizer (BertTokenizer): BERT tokenizer. Based on WordPiece.
         experiment_dict (ExperimentData): Custom TypedDict that contains all of the information needed for model training.
         max_length (int): Hyperparameter that controls the length of the padding/truncation for the tokenized text.
         sampler (str): Hyperparameter that specifies whether or not to normalize the class weights in the data preparation step.
@@ -298,8 +290,6 @@ def tokenize_data(
                     class_weights = 1.0 / class_counts
                     if sampler == "weighted_norm":
                         class_weights = normalize(input=class_weights, dim=0)
-                        # if verbose:
-                        #     print(f"Normalized class weights: {class_weights}")
                     experiment_dict[f"stratify_{strat_type}"][
                         f"class_weights_{split}"
                     ] = class_weights[targets]
@@ -318,14 +308,11 @@ def get_dataloader(
     """Convert the Dataset wrapping tensors into DataLoader objects to be fed into the model.
 
     Args:
-        data_train (TensorDataset): Training dataset.
-        data_validation (TensorDataset): Validation dataset.
+        data_train (NGODataset): Training dataset.
+        data_validation (NGODataset): Validation dataset.
+        data_test (NGODataset): Test dataset.
         class_weights_train (Tensor): Class weights that are reciprocal of class counts to oversample minority classes.
         batch_size (int): Hyperparameter. Specified batch size for loading data into the model.
-
-    Not included in Hyperparameter sweep:
-        data_test (TensorDataset): Test dataset.
-        is_test (bool, optional): Specify if this is during train/val (True) or test (False). Defaults to True.
 
     Returns:
         DataLoaderDict: Returns either train/val DataLoaders or the test DataLoader, which are iterables over the given dataset(s).
@@ -342,8 +329,7 @@ def get_dataloader(
     dataloader_validation = DataLoader(
         dataset=data_validation, shuffle=False, batch_size=batch_size,
     )
-
-    # Sequential sampling for validation
+    # Sequential sampling for test
     dataloader_test = DataLoader(
         dataset=data_test, shuffle=False, batch_size=batch_size,
     )
@@ -388,17 +374,12 @@ def load_model(
             "The BERT model has {:} different named parameters.\n".format(len(params))
         )
         print("\t==== Embedding Layer ====\n")
-
         for p in params[0:5]:
             print("\t{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
-
         print("\n\t==== First Transformer ====\n")
-
         for p in params[5:21]:
             print("\t{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
-
         print("\n\t==== Output Layer ====\n")
-
         for p in params[-4:]:
             print("\t{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
     return model
@@ -504,6 +485,7 @@ def train_epoch(
         # It is used to mitigate the problem of exploding gradients.
         if clip_grad:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
         optimizer.step()
 
         # Taking the average, loss is indifferent to the batch size.
@@ -545,15 +527,15 @@ def valid_epoch(
         dataloader, desc=f"Epoch {epoch+1:1d}", leave=False, disable=False,
     )
 
-    # Create empty lists for collecting IDs
-    preds_all, true_labels_all = [], []
+    # Create empty lists for collecting data to summarize later
+    preds_all, true_labels_all, eins_all, embs_all = [], [], [], []
 
     # Initialize metrics
     accuracy_by_label = Accuracy(num_classes=num_labels, average="none")
     accuracy_weighted = Accuracy(num_classes=num_labels, average="weighted")
 
     # Precision: What proportion of predicted positives are truly positive?
-    # Recall: what proportion of actual positives are correctly classified
+    # Recall: what proportion of actual positives are correctly classified?
     # F1Score: harmonic mean of precision and recall
     f1score_by_label = F1Score(num_classes=num_labels, average="none")
     f1score_weighted = F1Score(num_classes=num_labels, average="weighted")
@@ -567,6 +549,7 @@ def valid_epoch(
             "input_ids": batch[0],
             "attention_mask": batch[1],
             "labels": batch[2],
+            "eins": batch[3],
         }
         # torch.no_grad tells PyTorch not to construct the compute graph during this forward pass
         # (since we won’t be running backprop here)–this just reduces memory consumption and speeds things up a little.
@@ -575,6 +558,9 @@ def valid_epoch(
 
         loss = outputs[0]
         cumu_loss += loss.item()
+        #########################################
+        # ACCUMULATE EMBEDDINGS AND MAP TO EINS #
+        #########################################
 
         # Taking the average loss, loss is indifferent to the batch size.
         loss_avg_batch_valid = loss.item() / len(batch)
@@ -608,32 +594,10 @@ def valid_epoch(
     f1 = f1score_weighted.compute()
     f1_by_label = f1score_by_label.compute()
 
-    # PR curve
-    wandb.log(
-        {
-            "pr_curve": wandb.plot.pr_curve(
-                true_labels_all, preds_all, labels=class_labels,
-            )
-        }
-    )
     # ROC curve
-    wandb.log(
-        {
-            "roc_curve": wandb.plot.roc_curve(
-                true_labels_all, preds_all, labels=class_labels,
-            )
-        }
-    )
+    # wandb.log({})
     # Confusion matrix
-    wandb.log(
-        {
-            "conf_mat": wandb.plot.confusion_matrix(
-                y_true=true_labels_all.numpy(),
-                preds=preds_labels_all.numpy(),
-                class_names=class_labels,
-            )
-        }
-    )
+    # wandb.log({})
     # Log to W&B and print output
     epoch_scores = {"val_loss": loss_avg, "val_acc": acc, "val_f1": f1}
     epoch_scores.update(
@@ -643,6 +607,24 @@ def valid_epoch(
         {f"val_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
     )
     wandb.log(epoch_scores)
+
+    # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
+    wandb.log(
+        {
+            "pr_curve": wandb.plot.pr_curve(
+                true_labels_all, preds_all, labels=class_labels,
+            ),
+            "roc_curve": wandb.plot.roc_curve(
+                true_labels_all, preds_all, labels=class_labels,
+            ),
+            "conf_mat": wandb.plot.confusion_matrix(
+                y_true=true_labels_all.numpy(),
+                preds=preds_labels_all.numpy(),
+                class_names=class_labels,
+            ),
+        },
+    )
+    # For progress display
     tqdm.write(f"val_loss: {loss_avg}")
 
     return loss_avg
@@ -705,7 +687,7 @@ def train(config, cat_type, strat_type, sampler, verbose=True):
             verbose=verbose,
         ).to(device)
 
-        # Dataloaders
+        # Load dataloaders
         dataloader = get_dataloader(
             data_train=data[f"stratify_{strat_type}"]["dataset_train"],
             data_validation=data[f"stratify_{strat_type}"]["dataset_valid"],
@@ -714,10 +696,12 @@ def train(config, cat_type, strat_type, sampler, verbose=True):
             batch_size=config.batch_size,
         )
 
-        # Optimizer & Schedulers
+        # Optimizer
         optimizer = get_optimizer(
             model=model, learning_rate=config.learning_rate, optimizer=config.optimizer
         )
+
+        # Scheduler
         scheduler = get_scheduler(
             optimizer=optimizer,
             num_warmup_steps=round(config.perc_warmup_steps * len(dataloader["train"])),
@@ -727,11 +711,12 @@ def train(config, cat_type, strat_type, sampler, verbose=True):
 
         for epoch in range(config.epochs):
 
-            # Train
             if verbose:
                 print(
-                    f"Number of training examples: {len(dataloader['train'])*config.batch_size}"
+                    f"Number of training examples: {len(dataloader['train'])*config.batch_size:,}"
                 )
+
+            # Train
             loss = train_epoch(
                 model=model,
                 dataloader=dataloader["train"],
@@ -751,13 +736,12 @@ def train(config, cat_type, strat_type, sampler, verbose=True):
                 class_labels=[target2name[lab] for lab in range(num_labels)],
                 device=device,
             )
+
+        # SAVE MODEL
+
         torch.cuda.empty_cache()
 
-        # Add GCN
-        # Add more line plots
-        # Figure out how to do ADASYM
-        # return nothing? loss, val_loss
-        return loss, val_loss
+        return data
 
 
 def train_broad_weighted_norm():

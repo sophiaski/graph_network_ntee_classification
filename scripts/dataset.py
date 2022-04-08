@@ -1,6 +1,5 @@
 from torch.utils.data import Dataset
 from transformers import BertTokenizer
-
 import torch
 import pandas as pd
 
@@ -41,4 +40,5 @@ class NGODataset(Dataset):
             return_tensors="pt",  # Return pytorch tensors.
         )
         encoded_dict["labels"] = self.labels[idx]
+        encoded_dict["eins"] = self.eins[idx]
         return encoded_dict
