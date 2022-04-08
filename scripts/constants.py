@@ -15,9 +15,9 @@ SWEEP_INIT = {
     "batch_size": 32,
     "classifier_dropout": 0.3,
     "perc_warmup_steps": 0.1,
-    "max_length": 64,
+    "max_length": 128,
     "clip_grad": True,
-    "frac": 0.5,
+    "frac": 1.0,
 }
 
 # Very broad random search
