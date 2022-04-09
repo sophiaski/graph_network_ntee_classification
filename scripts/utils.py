@@ -21,6 +21,7 @@ from typing import (
     Tuple,
     List,
     Optional,
+    Any,
 )
 
 # Data analysis
@@ -215,21 +216,11 @@ def format_time(elapsed: float) -> str:
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
 
-from prettytable import PrettyTable
+def readable_list(seq: List[Any]) -> str:
+    """Return a grammatically correct human readable string (with an Oxford comma)."""
+    # Ref: https://stackoverflow.com/a/53981846/
+    seq = [str(s) for s in seq]
+    if len(seq) < 3:
+        return " and ".join(seq)
+    return ", ".join(seq[:-1]) + ", and " + seq[-1]
 
-
-def count_parameters(model):
-    table = PrettyTable(["Modules", "Parameters"])
-    total_params = 0
-    for name, parameter in model.named_parameters():
-        if not parameter.requires_grad:
-            continue
-        params = parameter.numel()
-        table.add_row([name, params])
-        total_params += params
-    print(table)
-    print(f"Total Trainable Params: {total_params}")
-    return total_params
-
-
-count_parameters(net)

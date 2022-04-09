@@ -2,20 +2,20 @@
 
 # Model experiments set-up
 SEED = 117
-FRAC = 0.02
+
 EXPERIMENT_KEYS = [
     ["broad", "ntee"],
     ["sklearn", "none"],
-    ["train", "valid", "test"],
+    ["train", "valid", "test", "unlabeled"],
 ]
 SWEEP_INIT = {
     "optimizer": "adam",
     "learning_rate": 5e-05,
     "epochs": 1,
-    "batch_size": 32,
+    "batch_size": 16,
     "classifier_dropout": 0.3,
     "perc_warmup_steps": 0.1,
-    "max_length": 128,
+    "max_length": 256,
     "clip_grad": True,
     "frac": 1.0,
 }
@@ -74,7 +74,7 @@ SWEEP_CONFIG_Mar14 = {
 
 # Final baseline grid search, switching to maximizing accuracy
 # SWEEP_CONFIG_Mar15
-SWEEP_CONFIG = {
+SWEEP_CONFIG_Mar15 = {
     "method": "random",
     "metric": {"name": "val_acc", "goal": "maximize"},
     "parameters": {
@@ -86,6 +86,22 @@ SWEEP_CONFIG = {
         "perc_warmup_steps": {"values": [0, 0.1]},
         "clip_grad": {"values": [False]},
         "max_length": {"values": [64]},
+        "frac": {"values": [1.0]},
+    },
+}
+
+SWEEP_CONFIG = {
+    "method": "random",
+    "metric": {"name": "val_acc", "goal": "maximize"},
+    "parameters": {
+        "optimizer": {"values": ["adam"]},
+        "classifier_dropout": {"values": [0.1, 0.3, 0.4]},
+        "learning_rate": {"values": [0.00005, 0.00002]},
+        "epochs": {"values": [2, 3]},
+        "batch_size": {"values": [16, 32, 64]},
+        "perc_warmup_steps": {"values": [0, 0.1]},
+        "clip_grad": {"values": [False]},
+        "max_length": {"values": [64, 128]},
         "frac": {"values": [1.0]},
     },
 }
@@ -240,12 +256,7 @@ NODE_COLS = [
     "broad_cat",
     "benchmark_status",
 ]
-EDGE_COLS = [
-    "src",
-    "dst",
-    "tax_period",
-    "cash_grant_amt",
-]
+EDGE_COLS = ["src", "dst", "edge_type", "tax_period", "cash_grant_amt"]
 
 # Graph! Complex
 NODE_COLS_COMPLEX = []

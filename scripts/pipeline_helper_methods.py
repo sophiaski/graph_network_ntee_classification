@@ -67,13 +67,20 @@ def build_data(
     if sampler not in ["norm", "weighted_norm"]:
         raise ValueError("sampler must be 'norm' or 'weighted_norm'.")
 
-    # Load data
-    from benchmark_process import load_benchmark
-    from benchmark_process import load_benchmark
+    # # Load data
+    # from benchmark_process import load_benchmark
 
-    input_data = load_benchmark(
-        merge_data=True, frac=frac, seed=seed, verbose=verbose
+    # input_data = load_benchmark(
+    #     merge_data=True, frac=frac, seed=seed, verbose=verbose
+    # ).fillna("")
+
+    # Load data
+    from graph_process import load_nodes
+
+    input_data = load_nodes(
+        complex_graph=False, flatten_graph=True, frac=frac, seed=seed, verbose=verbose
     ).fillna("")
+
     # Encode labels as torch-friendly integers
     encoded_data_dict = encode_targets(
         data=input_data, cat_type=cat_type, verbose=verbose
@@ -229,20 +236,21 @@ def stratify_by(
         # Split train into train-val w/ stratification
         (train, validation,) = train_test_split(
             trainval,
-            test_size=0.3,
+            test_size=0.2,
             stratify=trainval["target"].values,
             random_state=seed,
         )
     else:
         # Split train into train-val w/o stratifying
         (train, validation,) = train_test_split(
-            trainval, test_size=0.3, random_state=seed,
+            trainval, test_size=0.2, random_state=seed,
         )
 
     return {
         "train": train,
         "valid": validation,
         "test": test,
+        "unlabeled": data[data["benchmark_status"] == "new"].copy(),
         "split_size": (len(train), len(validation), len(test)),
     }
 
@@ -323,7 +331,10 @@ def get_dataloader(
         weights=class_weights_train, num_samples=len(class_weights_train)
     )
     dataloader_train = DataLoader(
-        dataset=data_train, sampler=weighted_random_sampler, batch_size=batch_size,
+        dataset=data_train,
+        sampler=weighted_random_sampler,
+        batch_size=batch_size,
+        num_workers=4,
     )
     # Sequential sampling for validation
     dataloader_validation = DataLoader(
@@ -337,6 +348,7 @@ def get_dataloader(
         "train": dataloader_train,
         "valid": dataloader_validation,
         "test": dataloader_test,
+        "unlabeled": dataloader_unlabeled,
     }
 
 
@@ -383,6 +395,7 @@ def load_model(
         print("\n\t==== Output Layer ====\n")
         for p in params[-4:]:
             print("\t{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
+
     return model
 
 

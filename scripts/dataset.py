@@ -15,15 +15,6 @@ class NGODataset(Dataset):
         self.eins = dataframe["ein"].values
         self.max_length = max_length
 
-    def get_text(self, idx):
-        return self.text[idx]
-
-    def get_labels(self, idx):
-        return self.labels[idx]
-
-    def get_eins(self, idx):
-        return self.eins[idx]
-
     def __len__(self):
         return len(self.labels)
 

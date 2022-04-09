@@ -1,31 +1,41 @@
 # Initialize directory paths, classes, constants, packages, and other methods
+from matplotlib.cbook import flatten
 from utils import *
 
 # Get other methods to load in cleaned data
 from grants_process import load_grants
 from benchmark_process import load_benchmark
 
+# Get mapper that converts from NTEE1 to Broad category
+from collections import ChainMap, OrderedDict
+
 
 @typechecked
 def create_nodes(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+    complex_graph: bool = False,
+    flatten_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """Create the nodes DataFrame.
 
     Args:
+        complex_graph (bool, optional): Strategy for building a complex graph with location nodes. Defaults to False.
+        flatten_graph (bool, optional): Strategy for including some of the surrounding node features directly in sequence field. Defaults to False.
         frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
         seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
         verbose (bool, optional): Print Pandas DataFrame shape. Defaults to True.
-        drop_edge_data (bool, optional): Drop edge features. Defaults to True.
-        drop_xtra_node_data (bool, optional): Drop node features, execept for ones that are useful in building graph or understanding missing data. Defaults to True.
-        drop_seq_data (bool, optional): Drop sequence data. Defaults to True.
 
     Returns:
         pd.DataFrame: Node DataFrame.
     """
-    # Get mapper that converts from NTEE1 to Broad category
-    from collections import ChainMap, OrderedDict
 
+    ################
+    # COMBINE DATA #
+    ################
+
+    # Load in two datasets
     grants = load_grants(frac=frac, seed=seed, verbose=verbose)
     benchmark = load_benchmark(merge_data=True, frac=frac, seed=seed, verbose=verbose)
 
@@ -58,50 +68,68 @@ def create_nodes(
         .fillna(pd.NA)
     )
 
-    # Fill in missing org name values w/ taxpayer_name values
+    ################
+    # MISSING DATA #
+    ################
+
+    # If organization name is missing, fill in values w/ taxpayer_name
     nodes.loc[nodes["org"].isna() & nodes["taxpayer_name"].notna(), "org"] = nodes[
         nodes["org"].isna() & nodes["taxpayer_name"].notna()
     ]["taxpayer_name"]
 
-    # Fill in missing sequence values w/ org name values
+    # Similarly, if sequence information is missing, fill in values w/ the organization name
     nodes.loc[nodes["sequence"].isna() & nodes["org"].notna(), "sequence"] = nodes[
         nodes["sequence"].isna() & nodes["org"].notna()
     ]["org"]
 
-    # Filling in missing sequences with grant_desc field from grants
-    grant_desc_mapper = (
-        grants.loc[
-            grants["grantee_ein"].isin(nodes[nodes["sequence"].isna()]["ein"].tolist()),
-            ["grantee_ein", "grant_desc"],
-        ]
-        .sort_values("grant_desc")
-        .drop_duplicates(subset="grantee_ein")
-        .set_index("grantee_ein")["grant_desc"]
-        .to_dict()
-    )
-    nodes.loc[nodes["sequence"].isna(), "sequence"] = nodes[nodes["sequence"].isna()][
-        "ein"
-    ].map(grant_desc_mapper)
+    #################################
+    # DO WE WANT TO REALLY DO THIS? #
+    #################################
 
-    # See if we can find more NTEE1 labels
-    mapper = load_json(loc=f"{BRONZE_PATH}cleanup/", filename=f"ein_NTEE1")
-    nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = (
-        nodes[nodes["NTEE1"].isna()]["ein"].map(mapper).fillna("Z")
-    )
-    nodes.loc[:, "NTEE1"] = nodes[
-        "NTEE1"
-    ].str.upper()  # Some of the values are lowercase?
+    # # See if we can fill in more NTEE1 labels from BMF data
+    # mapper = load_json(loc=f"{BRONZE_PATH}cleanup/", filename=f"ein_NTEE1")
+    # nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = (
+    #     nodes[nodes["NTEE1"].isna()]["ein"].map(mapper).fillna("Z")
+    # )
+    # nodes.loc[:, "NTEE1"] = nodes[
+    #     "NTEE1"
+    # ].str.upper()  # Some of the values are lowercase?
 
-    # Get constants
-    BROAD_CAT_MAPPER = dict(
-        ChainMap(*[{letter: k for letter in v} for k, v in BROAD_CAT_DICT.items()])
-    )
-    nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = nodes[
-        nodes["broad_cat"].isna()
-    ]["NTEE1"].map(BROAD_CAT_MAPPER)
+    # # Then, map the NTEE1 codes to the broad categories
+    # BROAD_CAT_MAPPER = dict(
+    #     ChainMap(*[{letter: k for letter in v} for k, v in BROAD_CAT_DICT.items()])
+    # )
+    # nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = nodes[
+    #     nodes["broad_cat"].isna()
+    # ]["NTEE1"].map(BROAD_CAT_MAPPER)
 
-    # Create node_type feature
-    missing_node_type = set(nodes[nodes["node_type"].isna()]["ein"].unique())
+    ############
+    # OR THIS? #
+    ############
+
+    # # Leverage grant description data to fill in missing sequences.
+    # grant_desc_mapper = (
+    #     grants.loc[
+    #         grants["grantee_ein"].isin(
+    #             nodes[nodes["sequence"].isna()]["ein"].tolist()
+    #         ),
+    #         ["grantee_ein", "grant_desc"],
+    #     ]
+    #     .sort_values("grant_desc")
+    #     .drop_duplicates(subset="grantee_ein")
+    #     .set_index("grantee_ein")["grant_desc"]
+    #     .to_dict()
+    # )
+    # nodes.loc[nodes["sequence"].isna(), "sequence"] = nodes[
+    #     nodes["sequence"].isna()
+    # ]["ein"].map(grant_desc_mapper)
+
+    #####################
+    # NODE_TYPE FEATURE #
+    #####################
+
+    # Create node_type feature (grantor, grantee, both)
+    # missing_node_type = set(nodes[nodes["node_type"].isna()]["ein"].unique())
     grantee_node_type = set(nodes[nodes["node_type"] == "grantee"]["ein"].unique())
     grantor_node_type = set(nodes[nodes["node_type"] == "grantor"]["ein"].unique())
     both_node_type = grantee_node_type.intersection(grantor_node_type)
@@ -113,6 +141,137 @@ def create_nodes(
         (nodes["NTEE1"] != "T") & (nodes["node_type"].isna()), "node_type"
     ] = "grantee"
     nodes.loc[nodes["ein"].isin(both_node_type), "node_type"] = "both"
+
+    ###########################################
+    # ADD  GRAPH INFORMATION TO SEQUENCE DATA #
+    ###########################################
+
+    if flatten_graph:
+
+        ## NODE_TYPE
+
+        # Append node+type information to beginning of sequence so its detected in classifier
+        nodes.loc[:, "sequence"] = (
+            nodes["node_type"].map(
+                {
+                    "grantor": "Funder.".upper(),
+                    "grantee": "Grant Recipient.".upper(),
+                    "both": "Both funder and recipient.".upper(),
+                }
+            )
+            + " "
+            + nodes["sequence"]
+        )
+
+    ## GRANT DESCRIPTIONS
+
+    if flatten_graph or complex_graph:
+
+        ## Include grant descriptions in sequence data.
+        grants.fillna("", inplace=True)
+
+        # Create unique identiier for cleaning up grant descriptions
+        grants.loc[:, "edge"] = grants["grantee_ein"] + grants["grantor_ein"]
+
+        # Combine all grant descriptions, drop duplicates, and get rid of repeating words.
+
+        grant_desc = (
+            grants.groupby(by="edge")["grant_desc"]
+            .apply(set)
+            .apply(
+                lambda val: " ".join(
+                    OrderedDict((w, w) for w in " ".join(val).split()).keys()
+                )
+            )
+            .to_dict()
+        )
+        del grants["grant_desc"]
+
+        # Get cleaned grant description fields from mapper
+        grants.loc[:, "grant_desc"] = grants["edge"].map(grant_desc).fillna(pd.NA)
+
+        ## ADD TO SEQUENCE
+
+        # Collect all unique grant descriptions for each grantee's EIN and then append to the end of the sequence in human readable format.
+        # grants.loc[:, "grant_desc"] = grants["grant_desc"]
+        grant_desc_mapper = (
+            grants.drop_duplicates(subset=["grantee_ein", "grant_desc"])
+            .groupby(by="grantee_ein")["grant_desc"]
+            .agg(lambda l: "|".join([x for x in l if pd.notna(x)]))
+            .to_dict()
+        )
+
+        grant_desc_mapper_str = {
+            k: f"They received funding for their programs on {readable_list(v.split('|'))}.".upper()
+            for k, v in grant_desc_mapper.items()
+            if v
+        }
+        # Append locations to end of sequence so its detected in classifier
+        # nodes.loc[:, "sequence"] = (
+        #     nodes["sequence"] + " " + nodes["ein"].map(grant_desc_mapper_str)
+        # )
+
+        nodes.loc[:, "sequence"] = nodes.apply(
+            lambda row: f"{row['sequence']}. {grant_desc_mapper_str[row['ein']]}"
+            if grant_desc_mapper_str.get(row["ein"])
+            else row["sequence"],
+            axis=1,
+        )
+
+    if flatten_graph:
+
+        ## LOCATIONS
+
+        # Store multiple locations (if present) in sequence field
+        node_locations = (
+            nodes.copy()
+            .drop_duplicates(subset=["ein", "location"])
+            .groupby("ein")["location"]
+            .agg(lambda l: "|".join([x for x in l if pd.notna(x)]))
+        )
+        node_locations_mapper = {
+            k: f"Operates out of {readable_list(v.split('|'))}.".upper()
+            for k, v in node_locations.to_dict().items()
+            if v
+        }
+        # Append locations to end of sequence so its detected in classifier
+        nodes.loc[:, "sequence"] = nodes.apply(
+            lambda row: f"{row['sequence']}. {node_locations_mapper[row['ein']]}"
+            if node_locations_mapper.get(row["ein"])
+            else row["sequence"],
+            axis=1,
+        )
+
+    ###########################
+    # ADD COMPLEXITY TO NODES #
+    ###########################
+
+    if complex_graph:
+
+        ## CREATE REGION NODES
+
+        # Fill in missing zipcodes with filler 00000 value
+        nodes.loc[nodes["zipcode"].isna(), "zipcode"] = "00000"
+
+        # Create zipcode dataframe with string format: "Operating zipcode: 95816"
+        zipcodes = (
+            nodes[["zipcode"]]
+            .copy()
+            .rename({"zipcode": "ein"}, axis=1)
+            .drop_duplicates(subset="ein")
+        )
+        zipcodes.loc[:, "sequence"] = "Operating zipcode: " + zipcodes["ein"]
+        zipcodes.loc[:, "node_type"] = "region"
+
+        nodes = pd.concat([nodes, zipcodes])
+
+        ## PROGRAM NODES
+
+        # Not for this project!
+
+    ##################
+    # CLEAN SEQUENCE #
+    ##################
 
     # Replace noisey sequence fields with NaN
     nodes.loc[nodes["sequence"].str.len() <= 2, "sequence"] = pd.NA
@@ -134,38 +293,36 @@ def create_nodes(
     # Apply sequence mapper to retrieve that information again
     nodes.loc[:, "sequence"] = nodes["ein"].map(sequence)
 
+    ##########################################
+    # UNLABELED NODES - NOT USED IN TRAINING #
+    ##########################################
+
     # Fill in nodes that do not have a benchmark status (they are not in original study)
     nodes.loc[nodes["benchmark_status"].isna(), "benchmark_status"] = "new"
+    nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = "Z"
+    nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = "X"
 
-    # Get unique nodes with relevant fields
-    nodes = (
+    ##########
+    # OUTPUT #
+    ##########
+
+    # Output nodes sorted alphabetically, descending by benchmark_status (train, test, new) and then alphabetically, ascending by ein
+    return (
         nodes[NODE_COLS]
         .copy()
         .drop_duplicates(subset=["ein"])
-        .sort_values("ein")
+        .sort_values(by=["benchmark_status", "ein"], ascending=[False, True])
         .reset_index(drop=True)
         .fillna("")
     )
 
-    # # Store multiple locations (if present) as a node feature
-    # node_locations = (
-    #     nodes.drop_duplicates(subset=["ein", "location"])
-    #     .groupby("ein")["location"]
-    #     .agg(lambda l: "|".join([x for x in l if pd.notna(x)]))
-    # )
-    # node_locations_mapper = {k: v for k, v in node_locations.to_dict().items() if v}
-    # nodes.loc[:, "locations"] = nodes["ein"].map(node_locations_mapper).fillna(pd.NA)
-
-    # # Fill in missing zipcodes with filler 00000 value (to build graph)
-    # nodes.loc[nodes["zipcode"].isna(), "zipcode"] = "00000"
-
-    # Pre-processed nodes DF!
-    return nodes
-
 
 @typechecked
 def create_edges(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+    complex_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """_summary_
 
@@ -177,85 +334,67 @@ def create_edges(
     Returns:
         pd.DataFrame: _description_
     """
-    # Concatenate all grant descriptions into one
-    from collections import OrderedDict
-
     # Load in grants data to extract edge information
     grants = load_grants(frac=frac, seed=seed, verbose=verbose)
-    grants.rename({"grantor_ein": "src", "grantee_ein": "dst"}, axis=1, inplace=True)
 
-    # Drop duplicate edges, and then fill in grant description data
-    edges = (
-        grants[EDGE_COLS]
+    # Make copy of grants as final DF
+    edges = grants.copy().rename({"grantor_ein": "src", "grantee_ein": "dst"}, axis=1)
+
+    # Donation edge_type
+    edges.loc[:, "edge_type"] = "donates_to"
+
+    if complex_graph:
+
+        # This will generate two types of edges: donates_to & operates_in
+        # Idea here is to make the graph more fully connected.
+
+        ## REGION EDGES
+        # Fill in missing zipcodes with filler 00000 value
+        for typ in ["grantor", "grantee"]:
+            edges.loc[edges[f"{typ}_zipcode"].isna(), f"{typ}_zipcode"] = "00000"
+
+        # Create region edge dataframes, each organization pointing to their region node
+        zipcodes_src = (
+            edges[["src", "grantor_zipcode"]]
+            .copy()
+            .rename({"grantor_zipcode": "dst"}, axis=1)
+            .drop_duplicates(subset=["src", "dst"])
+        )
+        zipcodes_src.loc[:, "edge_type"] = "operates_in"
+        zipcodes_dst = (
+            edges[["dst", "grantee_zipcode"]]
+            .copy()
+            .rename({"dst": "src"}, axis=1)
+            .rename({"grantee_zipcode": "dst"}, axis=1)
+            .drop_duplicates(subset=["src", "dst"])
+        )
+        zipcodes_dst.loc[:, "edge_type"] = "operates_in"
+
+        ## Combine
+        edges = pd.concat([edges, zipcodes_src, zipcodes_dst])
+
+    ##########
+    # OUTPUT #
+    ##########
+
+    # Output edges sorted alphabetically, ascending by edge_type (donates_to, operates_in) and then alphabetically, ascending by src ein.
+    return (
+        edges[EDGE_COLS]
         .copy()
         .drop_duplicates(subset=["src", "dst"])
+        .sort_values(by=["edge_type", "src"], ascending=[True, True])
         .reset_index(drop=True)
         .fillna("")
     )
 
-    # # Create edge tuple for networkx ID
-    # edges.loc[:, "edge"] = edges.apply(lambda row: (row["src"], row["dst"]), axis=1)
-
-    # # Combine all grant descriptions, drop duplicates, and get rid of repeating words.
-    # grant_desc = (
-    #     edges.fillna("")
-    #     .groupby("edge")["grant_desc"]
-    #     .apply(set)
-    #     .apply(
-    #         lambda val: " ".join(
-    #             OrderedDict((w, w) for w in " ".join(val).split()).keys()
-    #         )
-    #     )
-    #     .to_dict()
-    # )
-    # del edges["grant_desc"]
-
-    # # Get grant description fields again from mapper
-    # edges.loc[:, "grant_desc"] = edges["edge"].map(grant_desc)
-    # edges.fillna("", inplace=True)
-    # del edges["edge"]
-
-    # # Create EIN -> ZIPCODE edge DF
-    # zips = (
-    #     nodes.copy().drop_duplicates(subset=["ein", "zipcode"]).reset_index(drop=True)
-    # )
-
-    # # Apply zip codes & then create
-    # zips.loc[:, "edge_type"] = "location"
-    # edge_cols = ["source", "destination", "edge_type"]
-    # zips.rename({"ein": "source", "zipcode": "destination"}, axis=1, inplace=True)
-    # zips = zips[edge_cols].copy()
-
-    # # Combine 2 edge types into 1 DF
-    # edges = pd.concat([grants, zips])
-
-    # Drop nodes down to unique EINs, w/ cols: ein, NTEE1, broad_cat, sequence, locations
-
-    # # Add zipcodes as nodes
-    # nodes = pd.concat(
-    #     [nodes, pd.DataFrame({"ein": nodes["zipcode"].unique().tolist()})]
-    # ).reset_index(drop=True)
-
-    # # For zip codes, assign new label type (we'll see how we use it later.) and put in filler, descriptive sequence
-    # nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = "AA"
-    # nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = "XI"
-    # nodes.loc[nodes["NTEE1"] == "AA", "sequence"] = "REGION"
-
-    # # Drop duplicates by EIN
-    # nodes = (
-    #     nodes.drop_duplicates(subset="ein")
-    #     .sort_values("ein")
-    #     .reset_index(drop=True)
-    #     .copy()
-    # )
-
-    # nodes = nodes[["ein", "NTEE1", "broad_cat", "locations", "sequence",]].fillna("")
-    return edges
-
 
 @typechecked
 def save_graph_dataframes(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+    complex_graph: bool = False,
+    flatten_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> None:
     """Save the nodes and edges to parquet.
 
@@ -265,27 +404,54 @@ def save_graph_dataframes(
         verbose (bool, optional): _description_. Defaults to True.
     """
 
-    nodes = create_nodes(frac=frac, seed=seed, verbose=verbose)
+    nodes = create_nodes(
+        complex_graph=complex_graph,
+        flatten_graph=flatten_graph,
+        frac=frac,
+        seed=seed,
+        verbose=verbose,
+    )
     if verbose:
         print(f"\nCREATING NODES DATAFRAME! w/ cols: {nodes.columns.tolist()}")
         print(f"Shape: {nodes.shape}")
 
-    edges = create_edges(frac=frac, seed=seed, verbose=verbose)
+    edges = create_edges(
+        complex_graph=complex_graph, frac=frac, seed=seed, verbose=verbose
+    )
     if verbose:
         print(f"\nCREATING EDGES DATAFRAME! w/ cols: {edges.columns.tolist()}")
         print(f"Shape: {edges.shape}")
-    # Save gold DFs!
+
+    # Save dataframes
+    if complex_graph:
+        filename = "complex"
+    else:
+        filename = "simple"
+
     save_to_parquet(
-        data=nodes[NODE_COLS], cols=NODE_COLS, loc=GRANTS_GOLD_PATH, filename="nodes",
+        data=edges[EDGE_COLS],
+        cols=EDGE_COLS,
+        loc=GRAPH_GOLD_PATH,
+        filename=f"edges_{filename}",
     )
+    if flatten_graph:
+        filename += "_flattened"
+
     save_to_parquet(
-        data=edges[EDGE_COLS], cols=EDGE_COLS, loc=GRANTS_GOLD_PATH, filename="edges",
+        data=nodes[NODE_COLS],
+        cols=NODE_COLS,
+        loc=GRAPH_GOLD_PATH,
+        filename=f"nodes_{filename}",
     )
 
 
 @typechecked
 def load_nodes(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+    complex_graph: bool = False,
+    flatten_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """Load in the nodes data.
 
@@ -297,16 +463,25 @@ def load_nodes(
     Returns:
         pd.DataFrame: Gold grants DataFrame(s) -> combined or (train, test)
     """
-    loc = GRANTS_GOLD_PATH
     filename = "nodes"
+    if complex_graph:
+        filename += "_complex"
+    else:
+        filename += "_simple"
+    if flatten_graph:
+        filename += "_flattened"
+
     return load_parquet(
-        loc=loc, filename=filename, frac=frac, seed=seed, verbose=verbose
+        loc=GRAPH_GOLD_PATH, filename=filename, frac=frac, seed=seed, verbose=verbose
     )
 
 
 @typechecked
 def load_edges(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True,
+    complex_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """Load in the edges data.
 
@@ -318,20 +493,33 @@ def load_edges(
     Returns:
         pd.DataFrame: Gold grants DataFrame(s) -> combined or (train, test)
     """
-    loc = GRANTS_GOLD_PATH
     filename = "edges"
+    if complex_graph:
+        filename += "_complex"
+    else:
+        filename += "_simple"
     return load_parquet(
-        loc=loc, filename=filename, frac=frac, seed=seed, verbose=verbose
+        loc=GRAPH_GOLD_PATH, filename=filename, frac=frac, seed=seed, verbose=verbose
     )
 
 
 @typechecked
 def load_graph_dfs(
-    frac: float = 1.0, seed: int = SEED, verbose: bool = True
+    complex_graph: bool = False,
+    flatten_graph: bool = False,
+    frac: float = 1.0,
+    seed: int = SEED,
+    verbose: bool = True,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     return (
-        load_nodes(frac=frac, seed=seed, verbose=verbose),
-        load_edges(frac=frac, seed=seed, verbose=verbose),
+        load_nodes(
+            complex_graph=complex_graph,
+            flatten_graph=flatten_graph,
+            frac=frac,
+            seed=seed,
+            verbose=verbose,
+        ),
+        load_edges(complex_graph=complex_graph, frac=frac, seed=seed, verbose=verbose,),
     )
 
 
@@ -339,7 +527,18 @@ def main():
     """
     Create edges and nodes (gold) of the grants dataset, saving to parquet for easy access.
     """
-    save_graph_dataframes(frac=1.0, seed=SEED, verbose=True)
+    # Simple graph, no flattening of graph-based features (AKA the benchmark)
+    save_graph_dataframes(
+        complex_graph=False, flatten_graph=False, frac=1.0, seed=SEED, verbose=True,
+    )
+    # Simple graph, w/ flattening of graph-based features
+    save_graph_dataframes(
+        complex_graph=False, flatten_graph=True, frac=1.0, seed=SEED, verbose=True,
+    )
+    # Complex graph, with location nodes and edges
+    save_graph_dataframes(
+        complex_graph=True, flatten_graph=False, frac=1.0, seed=SEED, verbose=True,
+    )
 
 
 if __name__ == "__main__":

@@ -90,7 +90,7 @@ def clean_grants(verbose: bool = True) -> pd.DataFrame:
         loc_cols = [f"{org_type}city", f"{org_type}state", f"{org_type}zipcode"]
         grants.loc[:, f"{org_type}_location"] = (
             grants[loc_cols]
-            .apply(lambda x: x.str.cat(sep=","), axis=1)
+            .apply(lambda x: x.str.cat(sep=", "), axis=1)
             .replace("", pd.NA)
         )
 
@@ -99,7 +99,7 @@ def clean_grants(verbose: bool = True) -> pd.DataFrame:
         combined_cols = [org_type, f"{org_type}_location"]
         grants.loc[:, f"{org_type}_info"] = (
             grants[combined_cols]
-            .apply(lambda x: x.str.cat(sep=","), axis=1)
+            .apply(lambda x: x.str.cat(sep=", "), axis=1)
             .replace("", pd.NA)
         )
     # Create new UUID for all unique grantee_info

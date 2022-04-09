@@ -197,6 +197,7 @@ def train(
             model_scripted.save(f"{MODELS_PATH}{name}_{d}")  # Save
 
             # torch.save(model.state_dict(), f"{MODELS_PATH}{name}_{d}")
+        torch.cuda.empty_cache()
 
         return data
 
@@ -454,7 +455,7 @@ def valid_epoch(
 def create_embeddings(
     config: Mapping,
     cat_type: str = "broad",
-    pretrained_model_path: Union[str, None] = None,
+    pretrained_model_path: Optional[str] = None,
     is_pretrained: bool = False,
     save_emb: bool = False,
     verbose: bool = True,

@@ -55,19 +55,9 @@ def stage_simple_graph():
     ## TARGET
     broadtarget2group = nodes.groupby("broad_cat_y")["broad_cat"].first().to_dict()
     nteetarget2group = nodes.groupby("NTEE1_y")["NTEE1"].first().to_dict()
+
     # Encoded ids to group label mappers
     save_to_json(data=broadtarget2group, loc=EMBEDDINGS_PATH, filename="simple_broad")
     save_to_json(data=nteetarget2group, loc=EMBEDDINGS_PATH, filename="simple_ntee1")
 
     return nodes, edges
-
-
-# Set up for training on optimal BERT
-# Then without
-
-# GNNs
-# GCN
-# GAT
-
-# Make graph more complicated if scores still stuck
-# User hyperparameters from Coras dataset
