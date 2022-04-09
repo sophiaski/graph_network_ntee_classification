@@ -30,6 +30,9 @@ from torchmetrics import Accuracy, F1Score
 # PyTorch Dataset
 from dataset import NGODataset
 
+# Nodes
+from graph_process import load_nodes
+
 
 @typechecked
 def build_data(
@@ -37,48 +40,27 @@ def build_data(
     strat_type: str,
     max_length: int,
     sampler: str,
+    complex_graph: bool = False,
+    add_more_targets: bool = False,
     frac: float = 1.0,
     seed: int = SEED,
     verbose: bool = True,
 ) -> ExperimentData:
-    """_summary_
-
-    Args:
-        cat_type (str): _description_
-        strat_type (str): _description_
-        max_length (int): _description_
-        sampler (str): _description_
-        frac (float, optional): _description_. Defaults to 1.0.
-        seed (int, optional): _description_. Defaults to SEED.
-        verbose (bool, optional): _description_. Defaults to True.
-
-    Raises:
-        ValueError: _description_
-        ValueError: _description_
-        ValueError: _description_
-
-    Returns:
-        ExperimentData: _description_
-    """
-    if cat_type not in ["both", "broad", "ntee"]:
-        raise ValueError("cat_type must be 'both','broad', or 'ntee'.")
-    if strat_type not in ["both", "none", "sklearn"]:
-        raise ValueError("strat_type must be 'both','none', or 'sklearn'.")
+    """Set up data for the model pipeline!"""
+    if cat_type not in ["broad", "ntee"]:
+        raise ValueError("cat_type must be 'broad' or 'ntee'.")
+    if strat_type not in ["none", "sklearn"]:
+        raise ValueError("strat_type must be 'none' or 'sklearn'.")
     if sampler not in ["norm", "weighted_norm"]:
         raise ValueError("sampler must be 'norm' or 'weighted_norm'.")
 
-    # # Load data
-    # from benchmark_process import load_benchmark
-
-    # input_data = load_benchmark(
-    #     merge_data=True, frac=frac, seed=seed, verbose=verbose
-    # ).fillna("")
-
     # Load data
-    from graph_process import load_nodes
-
     input_data = load_nodes(
-        complex_graph=False, flatten_graph=True, frac=frac, seed=seed, verbose=verbose
+        complex_graph=complex_graph,
+        add_more_targets=add_more_targets,
+        frac=frac,
+        seed=seed,
+        verbose=verbose,
     ).fillna("")
 
     # Encode labels as torch-friendly integers
@@ -99,6 +81,10 @@ def build_data(
         sampler=sampler,
         verbose=verbose,
     )
+
+    if verbose:
+        print("Processing data is done. Now onto the model!")
+
     return experiment_dict
 
 
@@ -117,25 +103,26 @@ def encode_targets(
         ExperimentData: Custom TypedDict that contains all of the information needed for model training.
     """
     if verbose:
-        print(f"\nAPPLYING LabelEncoder() TO DATA: {data.shape}")
+        print(f"Applying LabelEncoder() to target: {cat_type.upper()}")
     if cat_type == "broad":
         col_name = "broad_cat"
-        unlabeled = "X"
+        unlabeled_group = "X"
         group2name = BROAD_CAT_NAME
     else:
         col_name = "NTEE1"
-        unlabeled = "Z"
+        unlabeled_group = "Z"
         group2name = NTEE_NAME
 
-    # Remove unlabeled data then reset index (easier to combine embeddings after), sorted by train->test->new
-    unlabeled_data = data[data[col_name] == unlabeled].copy()
-    data = (
-        data[data[col_name] != unlabeled]
-        .copy()
-        .sort_values("benchmark_status", ascending=False)
-    )
+    # For unlabeled nodes, encode groups as -1
+    unlabeled = data[data[col_name] == unlabeled_group].copy()
+    unlabeled.loc[:, f"{col_name}_target"] = -1
+    if verbose:
+        print(
+            f"\tFound {unlabeled.shape[0]} unlabeled organizations in this dataset, ignoring in training."
+        )
 
-    # Encode groups as numeric target value
+    # Encode labeled groups as numeric target value
+    data = data[data[col_name] != unlabeled_group].copy()
     data.loc[:, f"{col_name}_target"] = preprocessing.LabelEncoder().fit_transform(
         data[col_name].values
     )
@@ -146,21 +133,26 @@ def encode_targets(
     data.drop(["NTEE1", "broad_cat"], axis=1, inplace=True)
     if verbose:
         print(
-            f"\tREPLACED CATEGORY NAME COLUMN W/ ENCODED TARGETS {data.columns.tolist()} -> ['sequence', 'target']"
+            f"\tReplaced columns with sequence & target columns \n\t\t{data.columns.tolist()}"
         )
 
     # Reformat dataframe to only have input sequence & target label as columns
-    subset_data = (
+    data = (
         data[["ein", "benchmark_status", "sequence", f"{col_name}_target"]]
         .copy()
         .rename({"broad_cat_target": "target", "NTEE1_target": "target"}, axis=1)
     )
-
+    if verbose:
+        print(f"\t\t{data.columns.tolist()}")
     # Return output experiment dictionary
     return {
-        "data": subset_data,
-        "data_unlabeled": unlabeled_data,
-        "num_labels": subset_data["target"].nunique(),
+        "data": data,
+        "unlabeled": unlabeled[
+            ["ein", "benchmark_status", "sequence", f"{col_name}_target"]
+        ]
+        .copy()
+        .rename({"broad_cat_target": "target", "NTEE1_target": "target"}, axis=1),
+        "num_labels": data["target"].nunique(),
         "target2group": target2group,
         "group2name": group2name,
     }
@@ -193,21 +185,31 @@ def split_data(
         ExperimentData: Custom TypedDict that contains all of the information needed for model training.
     """
     if verbose:
-        print(f"\nSPLITTING DATA INTO TRAIN/DEV/TEST")
+        print(f"Splitting data into train/valid/test.")
+    # Load in data and split into labeled/nonlabeled examples
     data = experiment_dict["data"]
 
     if strat_type == "none":  # No stratified sampling
+        if verbose:
+            print("\tSplitting train+val by randomness.")
         experiment_dict["stratify_none"] = stratify_by(
             data=data, stratify=False, seed=seed
         )
     elif strat_type == "sklearn":  # Use stratified sampling
+        if verbose:
+            print("\tStratifiying train+val by target values.")
         experiment_dict["stratify_sklearn"] = stratify_by(
             data=data, stratify=True, seed=seed
         )
+
     if verbose:
         print(
-            f"\Train/Valid/Test split size: {experiment_dict[f'stratify_{strat_type}']['split_size']}"
+            f"\tSplit sizes: {experiment_dict[f'stratify_{strat_type}']['split_size']}"
         )
+    # Add unlabeled data back
+    experiment_dict[f"stratify_{strat_type}"]["unlabeled"] = experiment_dict[
+        "unlabeled"
+    ]
     return experiment_dict
 
 
@@ -228,8 +230,12 @@ def stratify_by(
     Returns:
         ExperimentDataSplit: Return train, validation, and test data; and sizes of each.
     """
-    # Split datafranmes into train+val and test (based on benchmark)
+    # Split dataframes into train+val and test (based on benchmark)
+
+    # Add new data intro train+val if it exists (add_more_targets == True)
     trainval = data[data["benchmark_status"] != "test"].copy()
+
+    # Benchmark test stays the same
     test = data[data["benchmark_status"] == "test"].copy()
 
     if stratify:
@@ -250,7 +256,6 @@ def stratify_by(
         "train": train,
         "valid": validation,
         "test": test,
-        "unlabeled": data[data["benchmark_status"] == "new"].copy(),
         "split_size": (len(train), len(validation), len(test)),
     }
 
@@ -273,15 +278,17 @@ def tokenize_data(
     Returns:
         ExperimentData: Custom TypedDict that contains all of the information needed for model training.
     """
+    if verbose:
+        print("Creating NGODatasets for dataloaders.")
 
     for strat_type in EXPERIMENT_KEYS[1]:
         if experiment_dict.get(f"stratify_{strat_type}"):
             if verbose:
-                print(f"\tGiven a stratification strategy ({strat_type.upper()}...")
+                print(f"\tApplying a stratification strategy: {strat_type.upper()}.")
             # Encode train, validation, test
             for split in EXPERIMENT_KEYS[2]:
                 if verbose:
-                    print(f"\t\tCreate a DataSet ({split.upper()}).")
+                    print(f"\t\t - Create a NGODataset: {split.upper()}")
                 # Extract (X,y) tuple
                 split_df = experiment_dict[f"stratify_{strat_type}"][split]
 
@@ -290,6 +297,10 @@ def tokenize_data(
                 ] = NGODataset(dataframe=split_df, max_length=max_length)
                 # Add class weights for training data
                 if split == "train":
+                    if verbose:
+                        print(
+                            f"\t\t\tCreating class weights to help with imbalance in WeightedRandomSampler."
+                        )
                     targets = split_df["target"].values
 
                     class_counts = torch.tensor(
@@ -297,6 +308,9 @@ def tokenize_data(
                     )
                     class_weights = 1.0 / class_counts
                     if sampler == "weighted_norm":
+                        if verbose:
+                            print("\t\t\t (Normalize them)")
+                        # https://discuss.pytorch.org/t/what-is-reasonable-range-of-per-class-weights/41742/5
                         class_weights = normalize(input=class_weights, dim=0)
                     experiment_dict[f"stratify_{strat_type}"][
                         f"class_weights_{split}"
@@ -310,6 +324,7 @@ def get_dataloader(
     data_train: NGODataset,
     data_validation: NGODataset,
     data_test: NGODataset,
+    data_unlabeled: NGODataset,
     class_weights_train: Tensor,
     batch_size: int,
 ) -> DataLoaderDict:
@@ -344,6 +359,12 @@ def get_dataloader(
     dataloader_test = DataLoader(
         dataset=data_test, shuffle=False, batch_size=batch_size,
     )
+
+    # Sequential sampling for unlabeled
+    dataloader_unlabeled = DataLoader(
+        dataset=data_unlabeled, shuffle=False, batch_size=batch_size,
+    )
+
     return {
         "train": dataloader_train,
         "valid": dataloader_validation,

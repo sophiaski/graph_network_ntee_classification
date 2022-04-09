@@ -14,10 +14,49 @@ SWEEP_INIT = {
     "epochs": 1,
     "batch_size": 16,
     "classifier_dropout": 0.3,
-    "perc_warmup_steps": 0.1,
+    "perc_warmup_steps": 0.25,
     "max_length": 256,
     "clip_grad": True,
-    "frac": 1.0,
+    "frac": 0.25,
+    "complex_graph": True,
+    "add_more_targets": True,
+}
+
+FINAL_CONFIG = {
+    "ntee": {
+        "cat_type": "ntee",
+        "optimizer": "adam",
+        "learning_rate": 5e-05,
+        "epochs": 1,
+        "batch_size": 16,
+        "classifier_dropout": 0.3,
+        "perc_warmup_steps": 0.25,
+        "max_length": 256,
+        "clip_grad": True,
+        "frac": 1.0,
+        "pretrained_model_path": None,
+        "strat_type": "sklearn",
+        "sampler": "weighted_norm",
+        "complex_graph": True,
+        "add_more_targets": False,
+    },
+    "broad": {
+        "cat_type": "broad",
+        "optimizer": "adam",
+        "learning_rate": 5e-05,
+        "epochs": 1,
+        "batch_size": 16,
+        "classifier_dropout": 0.3,
+        "perc_warmup_steps": 0.25,
+        "max_length": 256,
+        "clip_grad": True,
+        "frac": 1.0,
+        "pretrained_model_path": None,
+        "strat_type": "sklearn",
+        "sampler": "weighted_norm",
+        "complex_graph": True,
+        "add_more_targets": False,
+    },
 }
 
 # Very broad random search
@@ -91,18 +130,20 @@ SWEEP_CONFIG_Mar15 = {
 }
 
 SWEEP_CONFIG = {
-    "method": "random",
+    "method": "grid",
     "metric": {"name": "val_acc", "goal": "maximize"},
     "parameters": {
-        "optimizer": {"values": ["adam"]},
-        "classifier_dropout": {"values": [0.1, 0.3, 0.4]},
-        "learning_rate": {"values": [0.00005, 0.00002]},
-        "epochs": {"values": [2, 3]},
-        "batch_size": {"values": [16, 32, 64]},
-        "perc_warmup_steps": {"values": [0, 0.1]},
-        "clip_grad": {"values": [False]},
-        "max_length": {"values": [64, 128]},
-        "frac": {"values": [1.0]},
+        "optimizer": {"value": "adam"},
+        "classifier_dropout": {"value": 0.3},
+        "learning_rate": {"value": 0.00005},
+        "epochs": {"value": 2},
+        "batch_size": {"value": 16},
+        "perc_warmup_steps": {"value": 0.2},
+        "clip_grad": {"value": True},
+        "max_length": {"value": 256},
+        "frac": {"value": 1.0},
+        "complex_graph": {"values": [True, False]},
+        "add_more_targets": {"values": [True, False]},
     },
 }
 

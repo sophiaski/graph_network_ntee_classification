@@ -13,22 +13,22 @@ from collections import ChainMap, OrderedDict
 @typechecked
 def create_nodes(
     complex_graph: bool = False,
-    flatten_graph: bool = False,
+    add_more_targets: bool = False,
     frac: float = 1.0,
     seed: int = SEED,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Create the nodes DataFrame.
+    """Create the Nodes DataFrame. Defaults to recreating the simple, benchmark data.
 
     Args:
-        complex_graph (bool, optional): Strategy for building a complex graph with location nodes. Defaults to False.
-        flatten_graph (bool, optional): Strategy for including some of the surrounding node features directly in sequence field. Defaults to False.
+        complex_graph (bool, optional): Strategy for building a complex graph with location nodes and including some of the surrounding node features directly in sequence field.  Defaults to False.
+        add_more_targets (bool, optional): Strategy for adding more organizations w/ NTEE codes to the train-test data. Defaults to False.
         frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
         seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
         verbose (bool, optional): Print Pandas DataFrame shape. Defaults to True.
 
     Returns:
-        pd.DataFrame: Node DataFrame.
+        pd.DataFrame: Nodes DataFrame.
     """
 
     ################
@@ -82,47 +82,27 @@ def create_nodes(
         nodes["sequence"].isna() & nodes["org"].notna()
     ]["org"]
 
-    #################################
-    # DO WE WANT TO REALLY DO THIS? #
-    #################################
+    #################################################
+    # ADD MORE LABELED ORGANIZATIONS TO THE DATASET #
+    #################################################
 
-    # # See if we can fill in more NTEE1 labels from BMF data
-    # mapper = load_json(loc=f"{BRONZE_PATH}cleanup/", filename=f"ein_NTEE1")
-    # nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = (
-    #     nodes[nodes["NTEE1"].isna()]["ein"].map(mapper).fillna("Z")
-    # )
-    # nodes.loc[:, "NTEE1"] = nodes[
-    #     "NTEE1"
-    # ].str.upper()  # Some of the values are lowercase?
+    if add_more_targets:
+        # See if we can fill in more NTEE1 labels from BMF data & add to training data
+        mapper = load_json(loc=f"{BRONZE_PATH}cleanup/", filename=f"ein_NTEE1")
+        nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = (
+            nodes[nodes["NTEE1"].isna()]["ein"].map(mapper).fillna("Z")
+        )
+        nodes.loc[:, "NTEE1"] = nodes[
+            "NTEE1"
+        ].str.upper()  # Some of the values are lowercase?
 
-    # # Then, map the NTEE1 codes to the broad categories
-    # BROAD_CAT_MAPPER = dict(
-    #     ChainMap(*[{letter: k for letter in v} for k, v in BROAD_CAT_DICT.items()])
-    # )
-    # nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = nodes[
-    #     nodes["broad_cat"].isna()
-    # ]["NTEE1"].map(BROAD_CAT_MAPPER)
-
-    ############
-    # OR THIS? #
-    ############
-
-    # # Leverage grant description data to fill in missing sequences.
-    # grant_desc_mapper = (
-    #     grants.loc[
-    #         grants["grantee_ein"].isin(
-    #             nodes[nodes["sequence"].isna()]["ein"].tolist()
-    #         ),
-    #         ["grantee_ein", "grant_desc"],
-    #     ]
-    #     .sort_values("grant_desc")
-    #     .drop_duplicates(subset="grantee_ein")
-    #     .set_index("grantee_ein")["grant_desc"]
-    #     .to_dict()
-    # )
-    # nodes.loc[nodes["sequence"].isna(), "sequence"] = nodes[
-    #     nodes["sequence"].isna()
-    # ]["ein"].map(grant_desc_mapper)
+        # Then, map the NTEE1 codes to the broad categories
+        BROAD_CAT_MAPPER = dict(
+            ChainMap(*[{letter: k for letter in v} for k, v in BROAD_CAT_DICT.items()])
+        )
+        nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = nodes[
+            nodes["broad_cat"].isna()
+        ]["NTEE1"].map(BROAD_CAT_MAPPER)
 
     #####################
     # NODE_TYPE FEATURE #
@@ -141,14 +121,13 @@ def create_nodes(
         (nodes["NTEE1"] != "T") & (nodes["node_type"].isna()), "node_type"
     ] = "grantee"
     nodes.loc[nodes["ein"].isin(both_node_type), "node_type"] = "both"
+    if complex_graph:
 
-    ###########################################
-    # ADD  GRAPH INFORMATION TO SEQUENCE DATA #
-    ###########################################
+        ###########################################
+        # ADD  GRAPH INFORMATION TO SEQUENCE DATA #
+        ###########################################
 
-    if flatten_graph:
-
-        ## NODE_TYPE
+        ## NODE_TYPE ###################################################################################
 
         # Append node+type information to beginning of sequence so its detected in classifier
         nodes.loc[:, "sequence"] = (
@@ -163,9 +142,7 @@ def create_nodes(
             + nodes["sequence"]
         )
 
-    ## GRANT DESCRIPTIONS
-
-    if flatten_graph or complex_graph:
+        ## GRANT DESCRIPTIONS ###################################################################################
 
         ## Include grant descriptions in sequence data.
         grants.fillna("", inplace=True)
@@ -174,7 +151,6 @@ def create_nodes(
         grants.loc[:, "edge"] = grants["grantee_ein"] + grants["grantor_ein"]
 
         # Combine all grant descriptions, drop duplicates, and get rid of repeating words.
-
         grant_desc = (
             grants.groupby(by="edge")["grant_desc"]
             .apply(set)
@@ -190,10 +166,8 @@ def create_nodes(
         # Get cleaned grant description fields from mapper
         grants.loc[:, "grant_desc"] = grants["edge"].map(grant_desc).fillna(pd.NA)
 
-        ## ADD TO SEQUENCE
-
+        # Add to sequence
         # Collect all unique grant descriptions for each grantee's EIN and then append to the end of the sequence in human readable format.
-        # grants.loc[:, "grant_desc"] = grants["grant_desc"]
         grant_desc_mapper = (
             grants.drop_duplicates(subset=["grantee_ein", "grant_desc"])
             .groupby(by="grantee_ein")["grant_desc"]
@@ -206,11 +180,8 @@ def create_nodes(
             for k, v in grant_desc_mapper.items()
             if v
         }
-        # Append locations to end of sequence so its detected in classifier
-        # nodes.loc[:, "sequence"] = (
-        #     nodes["sequence"] + " " + nodes["ein"].map(grant_desc_mapper_str)
-        # )
 
+        # Append locations to end of sequence so its detected in classifier
         nodes.loc[:, "sequence"] = nodes.apply(
             lambda row: f"{row['sequence']}. {grant_desc_mapper_str[row['ein']]}"
             if grant_desc_mapper_str.get(row["ein"])
@@ -218,9 +189,7 @@ def create_nodes(
             axis=1,
         )
 
-    if flatten_graph:
-
-        ## LOCATIONS
+        ## LOCATIONS ###################################################################################
 
         # Store multiple locations (if present) in sequence field
         node_locations = (
@@ -242,13 +211,9 @@ def create_nodes(
             axis=1,
         )
 
-    ###########################
-    # ADD COMPLEXITY TO NODES #
-    ###########################
-
-    if complex_graph:
-
-        ## CREATE REGION NODES
+        ########################
+        # CREATE REGION NODES #
+        #######################
 
         # Fill in missing zipcodes with filler 00000 value
         nodes.loc[nodes["zipcode"].isna(), "zipcode"] = "00000"
@@ -267,7 +232,7 @@ def create_nodes(
 
         ## PROGRAM NODES
 
-        # Not for this project!
+        # Not for this project!!!
 
     ##################
     # CLEAN SEQUENCE #
@@ -297,7 +262,7 @@ def create_nodes(
     # UNLABELED NODES - NOT USED IN TRAINING #
     ##########################################
 
-    # Fill in nodes that do not have a benchmark status (they are not in original study)
+    # Fill in nodes that do not have a benchmark status (they were not in original study)
     nodes.loc[nodes["benchmark_status"].isna(), "benchmark_status"] = "new"
     nodes.loc[nodes["NTEE1"].isna(), "NTEE1"] = "Z"
     nodes.loc[nodes["broad_cat"].isna(), "broad_cat"] = "X"
@@ -324,15 +289,17 @@ def create_edges(
     seed: int = SEED,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """_summary_
+    """Create the Edges DataFrame. Defaults to creating the simple/benchmark edges.
 
     Args:
-        frac (float, optional): _description_. Defaults to 1.0.
-        seed (int, optional): _description_. Defaults to SEED.
-        verbose (bool, optional): _description_. Defaults to True.
+        complex_graph (bool, optional): Strategy for building a complex graph with location edges and including some of the surrounding node features directly in sequence field.  Defaults to False.
+        add_more_targets (bool, optional): Strategy for adding more organizations w/ NTEE codes to the train-test data. Defaults to False.
+        frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
+        seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
+        verbose (bool, optional): Print Pandas DataFrame shape. Defaults to True.
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: Edges DataFrame.
     """
     # Load in grants data to extract edge information
     grants = load_grants(frac=frac, seed=seed, verbose=verbose)
@@ -391,22 +358,16 @@ def create_edges(
 @typechecked
 def save_graph_dataframes(
     complex_graph: bool = False,
-    flatten_graph: bool = False,
+    add_more_targets: bool = False,
     frac: float = 1.0,
     seed: int = SEED,
     verbose: bool = True,
 ) -> None:
-    """Save the nodes and edges to parquet.
-
-    Args:
-        frac (float, optional): _description_. Defaults to 1.0.
-        seed (int, optional): _description_. Defaults to SEED.
-        verbose (bool, optional): _description_. Defaults to True.
-    """
+    """Save the nodes and edges to parquet. Saves simple/benchmark data by default."""
 
     nodes = create_nodes(
         complex_graph=complex_graph,
-        flatten_graph=flatten_graph,
+        add_more_targets=add_more_targets,
         frac=frac,
         seed=seed,
         verbose=verbose,
@@ -424,52 +385,44 @@ def save_graph_dataframes(
 
     # Save dataframes
     if complex_graph:
-        filename = "complex"
+        filename = "_complex"
     else:
-        filename = "simple"
+        filename = "_simple"
 
     save_to_parquet(
         data=edges[EDGE_COLS],
         cols=EDGE_COLS,
         loc=GRAPH_GOLD_PATH,
-        filename=f"edges_{filename}",
+        filename=f"edges{filename}",
     )
-    if flatten_graph:
-        filename += "_flattened"
+
+    if add_more_targets:
+        filename += "_w_added_targets"
 
     save_to_parquet(
         data=nodes[NODE_COLS],
         cols=NODE_COLS,
         loc=GRAPH_GOLD_PATH,
-        filename=f"nodes_{filename}",
+        filename=f"nodes{filename}",
     )
 
 
 @typechecked
 def load_nodes(
     complex_graph: bool = False,
-    flatten_graph: bool = False,
+    add_more_targets: bool = False,
     frac: float = 1.0,
     seed: int = SEED,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Load in the nodes data.
-
-    Args:
-        frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
-        seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
-        verbose (bool, optional): If True, print Pandas DataFrame shape. Defaults to True.
-
-    Returns:
-        pd.DataFrame: Gold grants DataFrame(s) -> combined or (train, test)
-    """
+    """Load in the nodes data. Loads benchmark node data by default."""
     filename = "nodes"
     if complex_graph:
         filename += "_complex"
     else:
         filename += "_simple"
-    if flatten_graph:
-        filename += "_flattened"
+    if add_more_targets:
+        filename += "_w_added_targets"
 
     return load_parquet(
         loc=GRAPH_GOLD_PATH, filename=filename, frac=frac, seed=seed, verbose=verbose
@@ -483,16 +436,7 @@ def load_edges(
     seed: int = SEED,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Load in the edges data.
-
-    Args:
-        frac (float, optional): Return a random fraction of rows from Pandas DataFrame. Defaults to 1.0 (100%).
-        seed (int, optional): Random state for reproducibiltiy. Defaults to SEED.
-        verbose (bool, optional): If True, print Pandas DataFrame shape. Defaults to True.
-
-    Returns:
-        pd.DataFrame: Gold grants DataFrame(s) -> combined or (train, test)
-    """
+    """Load in the edges data. Loads simple edge data by default."""
     filename = "edges"
     if complex_graph:
         filename += "_complex"
@@ -506,15 +450,16 @@ def load_edges(
 @typechecked
 def load_graph_dfs(
     complex_graph: bool = False,
-    flatten_graph: bool = False,
+    add_more_targets: bool = False,
     frac: float = 1.0,
     seed: int = SEED,
     verbose: bool = True,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load (nodes, edges) as DataFrames."""
     return (
         load_nodes(
             complex_graph=complex_graph,
-            flatten_graph=flatten_graph,
+            add_more_targets=add_more_targets,
             frac=frac,
             seed=seed,
             verbose=verbose,
@@ -527,18 +472,43 @@ def main():
     """
     Create edges and nodes (gold) of the grants dataset, saving to parquet for easy access.
     """
-    # Simple graph, no flattening of graph-based features (AKA the benchmark)
-    save_graph_dataframes(
-        complex_graph=False, flatten_graph=False, frac=1.0, seed=SEED, verbose=True,
-    )
-    # Simple graph, w/ flattening of graph-based features
-    save_graph_dataframes(
-        complex_graph=False, flatten_graph=True, frac=1.0, seed=SEED, verbose=True,
-    )
-    # Complex graph, with location nodes and edges
-    save_graph_dataframes(
-        complex_graph=True, flatten_graph=False, frac=1.0, seed=SEED, verbose=True,
-    )
+
+    for add_more_targets in [True, False]:
+        if add_more_targets:
+            print(
+                """
+▄▀█ █▀▄ █▀▄ █ █▄░█ █▀▀   █▀▄▀█ █▀█ █▀█ █▀▀   █▄░█ ▀█▀ █▀▀ █▀▀   █▀▀ █▀█ █▀▄ █▀▀ █▀   █ █▄░█ ▀█▀ █▀█   ▀█▀ █░█ █▀▀
+█▀█ █▄▀ █▄▀ █ █░▀█ █▄█   █░▀░█ █▄█ █▀▄ ██▄   █░▀█ ░█░ ██▄ ██▄   █▄▄ █▄█ █▄▀ ██▄ ▄█   █ █░▀█ ░█░ █▄█   ░█░ █▀█ ██▄
+
+█▀▄▀█ █ ▀▄▀ █
+█░▀░█ █ █░█ ▄"""
+            )
+        else:
+            print(
+                """
+█▀█ █▄░█ █░░ █▄█   █▀▀ ▄▀█ █▀█ █▀▀   ▄▀█ █▄▄ █▀█ █░█ ▀█▀   █▄▄ █▀▀ █▄░█ █▀▀ █░█ █▀▄▀█ ▄▀█ █▀█ █▄▀   █▀▄ ▄▀█ ▀█▀ ▄▀█
+█▄█ █░▀█ █▄▄ ░█░   █▄▄ █▀█ █▀▄ ██▄   █▀█ █▄█ █▄█ █▄█ ░█░   █▄█ ██▄ █░▀█ █▄▄ █▀█ █░▀░█ █▀█ █▀▄ █░█   █▄▀ █▀█ ░█░ █▀█"""
+            )
+        # Simple graph, no flattening of graph-based features (AKA the benchmark)
+        print("\tLOADING SIMPLE GRAPH (BENCHMARK)")
+        save_graph_dataframes(
+            complex_graph=False,
+            add_more_targets=add_more_targets,
+            frac=1.0,
+            seed=SEED,
+            verbose=True,
+        )
+        # Complex graph, with flattening of graph-based features & added location nodes and edges
+        print(
+            "\tLOADING COMPLEX GRAPH W/ FLATTENED GRAPH DATA IN TEXT FIELDS (AUGMENTED BENCHMARK)"
+        )
+        save_graph_dataframes(
+            complex_graph=True,
+            add_more_targets=add_more_targets,
+            frac=1.0,
+            seed=SEED,
+            verbose=True,
+        )
 
 
 if __name__ == "__main__":

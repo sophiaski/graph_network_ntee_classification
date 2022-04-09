@@ -1,7 +1,8 @@
 """All of the methods used with BERT Sequence Classification and hyperparameter tuning w/ W&B"""
 
-# Initialize directory paths, classes, constants, packages, and other methods
-from utils import *
+# 🄱🄴🅁🅃 🄵🄾🅁 🅂🄴🅀🅄🄴🄽🄲🄴 🄲🄻🄰🅂🅂🄸🄵🄸🄲🄰🅃🄸🄾🄽
+
+# Helper methods to clear up the script
 from pipeline_helper_methods import *
 
 
@@ -17,23 +18,7 @@ def train_broad_weighted_norm():
         cat_type="broad",
         strat_type="sklearn",
         sampler="weighted_norm",
-        save_model=False,
-    )
-
-
-def train_broad_weighted():
-    """
-    Experiment using
-    ✓ Broad category targets for classification.
-    ✓ Stratification in train/val/test split
-    ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
-    """
-    return train(
-        config=SWEEP_INIT,
-        cat_type="broad",
-        strat_type="sklearn",
-        sampler="norm",
-        save_model=False,
+        save_model=True,
     )
 
 
@@ -49,24 +34,48 @@ def train_ntee_weighted_norm():
         cat_type="ntee",
         strat_type="sklearn",
         sampler="weighted_norm",
-        save_model=False,
+        save_model=True,
     )
 
 
-def train_ntee_weighted():
-    """
-    Experiment using
-    ✓ NTEE1 category targets for classification.
-    ✓ Stratification in train/val/test split
-    ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
-    """
-    return train(
-        config=SWEEP_INIT,
-        cat_type="ntee",
-        strat_type="sklearn",
-        sampler="norm",
-        save_model=False,
-    )
+# def train_broad_weighted():
+#     """
+#     Experiment using
+#     ✓ Broad category targets for classification.
+#     ✓ Stratification in train/val/test split
+#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
+#     """
+#     return train(
+#         config=SWEEP_INIT,
+#         cat_type="broad",
+#         strat_type="sklearn",
+#         sampler="norm",
+#         save_model=True,
+#     )
+
+
+# def train_ntee_weighted():
+#     """
+#     Experiment using
+#     ✓ NTEE1 category targets for classification.
+#     ✓ Stratification in train/val/test split
+#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
+#     """
+#     return train(
+#         config=SWEEP_INIT,
+#         cat_type="ntee",
+#         strat_type="sklearn",
+#         sampler="norm",
+#         save_model=False,
+#     )
+
+
+# ██████╗░██╗██████╗░███████╗██╗░░░░░██╗███╗░░██╗███████╗
+# ██╔══██╗██║██╔══██╗██╔════╝██║░░░░░██║████╗░██║██╔════╝
+# ██████╔╝██║██████╔╝█████╗░░██║░░░░░██║██╔██╗██║█████╗░░
+# ██╔═══╝░██║██╔═══╝░██╔══╝░░██║░░░░░██║██║╚████║██╔══╝░░
+# ██║░░░░░██║██║░░░░░███████╗███████╗██║██║░╚███║███████╗
+# ╚═╝░░░░░╚═╝╚═╝░░░░░╚══════╝╚══════╝╚═╝╚═╝░░╚══╝╚══════╝
 
 
 def train(
@@ -85,6 +94,7 @@ def train(
         sampler (str): _description_
         verbose (bool, optional): _description_
     """
+
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
@@ -115,6 +125,8 @@ def train(
             strat_type=strat_type,
             max_length=config.max_length,
             sampler=sampler,
+            complex_graph=config.complex_graph,
+            add_more_targets=config.add_more_targets,
             frac=config.frac,
             seed=SEED,
             verbose=verbose,
@@ -138,6 +150,7 @@ def train(
             data_train=data[f"stratify_{strat_type}"]["dataset_train"],
             data_validation=data[f"stratify_{strat_type}"]["dataset_valid"],
             data_test=data[f"stratify_{strat_type}"]["dataset_test"],
+            data_unlabeled=data[f"stratify_{strat_type}"]["dataset_unlabeled"],
             class_weights_train=data[f"stratify_{strat_type}"]["class_weights_train"],
             batch_size=config.batch_size,
         )
@@ -181,32 +194,40 @@ def train(
                 num_labels=num_labels,
                 class_labels=[target2name[lab] for lab in range(num_labels)],
                 device=device,
-                stage="val",
-                is_pretrained=True,
+                phase="val",
+                from_saved_model=False,
+                logging_to_wandb=True,
                 save_emb=False,
             )
 
         # Save model
         if save_model:
             # Vars
-            name = "MODEL"
-            d = date.today().strftime("%m-%d")
+            filename = "model"
+            if config.complex_graph:
+                filename += "_complex"
+            else:
+                filename += "_simple"
+            if config.add_more_targets:
+                filename += "_w_added_targets"
+            filename += "_" + date.today().strftime("%m-%d")
 
-            # For exporting the model and running inference without defining the model class.
-            model_scripted = torch.jit.script(model)  # Export to TorchScript
-            model_scripted.save(f"{MODELS_PATH}{name}_{d}")  # Save
+            #  For exporting the model and running inference later.
+            torch.save(
+                model.state_dict(), f"{MODELS_PATH}{filename}",
+            )
 
-            # torch.save(model.state_dict(), f"{MODELS_PATH}{name}_{d}")
         torch.cuda.empty_cache()
 
         return data
 
 
-############################
-############################
-######### TRAINING #########
-############################
-############################
+# ████████╗██████╗░░█████╗░██╗███╗░░██╗██╗███╗░░██╗░██████╗░
+# ╚══██╔══╝██╔══██╗██╔══██╗██║████╗░██║██║████╗░██║██╔════╝░
+# ░░░██║░░░██████╔╝███████║██║██╔██╗██║██║██╔██╗██║██║░░██╗░
+# ░░░██║░░░██╔══██╗██╔══██║██║██║╚████║██║██║╚████║██║░░╚██╗
+# ░░░██║░░░██║░░██║██║░░██║██║██║░╚███║██║██║░╚███║╚██████╔╝
+# ░░░╚═╝░░░╚═╝░░╚═╝╚═╝░░╚═╝╚═╝╚═╝░░╚══╝╚═╝╚═╝░░╚══╝░╚═════╝░
 
 
 @typechecked
@@ -278,11 +299,12 @@ def train_epoch(
     return loss_avg
 
 
-###############################
-###############################
-######### VALIDATIONN #########
-###############################
-###############################
+# ██╗░░░██╗░█████╗░██╗░░░░░██╗██████╗░░█████╗░████████╗██╗░█████╗░███╗░░██╗
+# ██║░░░██║██╔══██╗██║░░░░░██║██╔══██╗██╔══██╗╚══██╔══╝██║██╔══██╗████╗░██║
+# ╚██╗░██╔╝███████║██║░░░░░██║██║░░██║███████║░░░██║░░░██║██║░░██║██╔██╗██║
+# ░╚████╔╝░██╔══██║██║░░░░░██║██║░░██║██╔══██║░░░██║░░░██║██║░░██║██║╚████║
+# ░░╚██╔╝░░██║░░██║███████╗██║██████╔╝██║░░██║░░░██║░░░██║╚█████╔╝██║░╚███║
+# ░░░╚═╝░░░╚═╝░░╚═╝╚══════╝╚═╝╚═════╝░╚═╝░░╚═╝░░░╚═╝░░░╚═╝░╚════╝░╚═╝░░╚══╝
 
 
 @typechecked
@@ -293,22 +315,15 @@ def valid_epoch(
     num_labels: int,
     class_labels: Sequence[str],
     device: torch.device,
-    stage: str,
-    is_pretrained: bool = True,
+    phase: str,
+    from_saved_model: bool = False,
+    logging_to_wandb: bool = True,
     save_emb: bool = False,
 ) -> float:
 
     # Update state to eval
     model.eval()
     cumu_loss = 0.0
-
-    # For labeling logging variables
-    if stage == "test":
-        record = "test"
-    elif stage == "val":
-        record = "val"
-    else:
-        record = "train"
 
     # Set up progress bar
     progress_bar = tqdm(
@@ -372,10 +387,9 @@ def valid_epoch(
         # auroc = auroc_weighted(preds, true_labels)
 
         # Log to W&B and print output
-        wandb.log({f"{record}_loss_batch": loss_avg_batch_valid})
-        progress_bar.set_postfix(
-            {f"{record}_loss_batch": f"{loss_avg_batch_valid:.3f}"}
-        )
+        if logging_to_wandb:
+            wandb.log({f"{phase}_loss_batch": loss_avg_batch_valid})
+        progress_bar.set_postfix({f"{phase}_loss_batch": f"{loss_avg_batch_valid:.3f}"})
         preds_all.append(preds)
         true_labels_all.append(true_labels)
 
@@ -394,71 +408,69 @@ def valid_epoch(
     f1 = f1score_weighted.compute()
     f1_by_label = f1score_by_label.compute()
 
-    # ROC curve
-    # wandb.log({})
-    # Confusion matrix
-    # wandb.log({})
-
     # Save embeddings to JSON
     if save_emb:
-        if is_pretrained:
-            filename = f"pretrained_{record}"
+        # Get name for category from num_labels
+        if num_labels == 9:
+            cat_type = "broad"
         else:
-            filename = record
+            cat_type = "ntee"
+
+        if from_saved_model:
+            filename = f"pretrained_model_{cat_type}_{phase}"
+        else:
+            filename = f"model_{cat_type}_{phase}"
         save_to_json(
-            data=dict(zip(eins, embs_all)), loc=EMBEDDINGS_PATH, filename=record
+            data=dict(zip(eins, embs_all)), loc=EMBEDDINGS_PATH, filename=phase
         )
 
     # Log to W&B and print output
-    epoch_scores = {
-        f"{record}_loss": loss_avg,
-        f"{record}_acc": acc,
-        f"{record}_f1": f1,
-    }
-    epoch_scores.update(
-        {f"{record}_acc_{idx}": val.item() for idx, val in enumerate(acc_by_label)}
-    )
-    epoch_scores.update(
-        {f"{record}_val_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
-    )
-    wandb.log(epoch_scores)
+    if logging_to_wandb:
+        epoch_scores = {
+            f"{phase}_loss": loss_avg,
+            f"{phase}_acc": acc,
+            f"{phase}_f1": f1,
+        }
+        epoch_scores.update(
+            {f"{phase}_acc_{idx}": val.item() for idx, val in enumerate(acc_by_label)}
+        )
+        epoch_scores.update(
+            {f"{phase}_val_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
+        )
+        wandb.log(epoch_scores)
 
-    # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
-    wandb.log(
-        {
-            f"{record}_pr_curve": wandb.plot.pr_curve(
-                true_labels_all, preds_all, labels=class_labels,
-            ),
-            f"{record}_roc_curve": wandb.plot.roc_curve(
-                true_labels_all, preds_all, labels=class_labels,
-            ),
-            f"{record}_conf_mat": wandb.plot.confusion_matrix(
-                y_true=true_labels_all.numpy(),
-                preds=preds_labels_all.numpy(),
-                class_names=class_labels,
-            ),
-        },
-    )
+        # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
+        wandb.log(
+            {
+                f"{phase}_pr_curve": wandb.plot.pr_curve(
+                    true_labels_all, preds_all, labels=class_labels,
+                ),
+                f"{phase}_roc_curve": wandb.plot.roc_curve(
+                    true_labels_all, preds_all, labels=class_labels,
+                ),
+                f"{phase}_conf_mat": wandb.plot.confusion_matrix(
+                    y_true=true_labels_all.numpy(),
+                    preds=preds_labels_all.numpy(),
+                    class_names=class_labels,
+                ),
+            },
+        )
     # For progress display
-    tqdm.write(f"{record}_loss: {loss_avg}")
+    tqdm.write(f"{phase}_loss: {loss_avg}")
 
     return loss_avg
 
 
-######################################
-######################################
-######### Create Embeddings! #########
-######################################
-######################################
+# ███████╗███╗░░░███╗██████╗░███████╗██████╗░██████╗░██╗███╗░░██╗░██████╗░░██████╗
+# ██╔════╝████╗░████║██╔══██╗██╔════╝██╔══██╗██╔══██╗██║████╗░██║██╔════╝░██╔════╝
+# █████╗░░██╔████╔██║██████╦╝█████╗░░██║░░██║██║░░██║██║██╔██╗██║██║░░██╗░╚█████╗░
+# ██╔══╝░░██║╚██╔╝██║██╔══██╗██╔══╝░░██║░░██║██║░░██║██║██║╚████║██║░░╚██╗░╚═══██╗
+# ███████╗██║░╚═╝░██║██████╦╝███████╗██████╔╝██████╔╝██║██║░╚███║╚██████╔╝██████╔╝
+# ╚══════╝╚═╝░░░░░╚═╝╚═════╝░╚══════╝╚═════╝░╚═════╝░╚═╝╚═╝░░╚══╝░╚═════╝░╚═════╝░
 
 
 def create_embeddings(
-    config: Mapping,
-    cat_type: str = "broad",
-    pretrained_model_path: Optional[str] = None,
-    is_pretrained: bool = False,
-    save_emb: bool = False,
-    verbose: bool = True,
+    config: Mapping, save_emb: bool = False, verbose: bool = True,
 ):
 
     random.seed(SEED)
@@ -481,23 +493,24 @@ def create_embeddings(
 
     # Pass the hyperparameter values to wandb.init to populate wandb.config.
     with wandb.init(config=config):
+
         # If called by wandb.agent, as below,
         # this config will be set by Sweep Controller
         config = wandb.config
 
-        print("CONFIG")
-        print(config)
-
         # Load dataset
         data = build_data(
-            cat_type=cat_type,
-            strat_type="none",
+            cat_type=config.cat_type,
+            strat_type=config.strat_type,
             max_length=config.max_length,
-            sampler="norm",
+            sampler=config.sampler,
+            complex_graph=config.complex_graph,
+            add_more_targets=config.add_more_targets,
             frac=config.frac,
             seed=SEED,
             verbose=verbose,
         )
+
         num_labels = data["num_labels"]
 
         # Create mapper dicts
@@ -506,14 +519,18 @@ def create_embeddings(
         target2name = {k: group2name[v] for k, v in target2group.items()}
 
         # Load BERT
-        if is_pretrained:
-            model = torch.jit.load(pretrained_model_path)
+        model = load_model(
+            num_labels=num_labels,
+            classifier_dropout=config.classifier_dropout,
+            verbose=verbose,
+        )
+        if config.pretrained_model_path:
+            logging_to_wandb = False
+            from_saved_model = True
+            model.load_state_dict(torch.load(config.pretrained_model_path))
         else:
-            model = load_model(
-                num_labels=num_labels,
-                classifier_dropout=config.classifier_dropout,
-                verbose=verbose,
-            )
+            logging_to_wandb = False
+            from_saved_model = False
         model.to(device)
 
         # Load dataloaders
@@ -521,14 +538,16 @@ def create_embeddings(
             data_train=data["stratify_none"]["dataset_train"],
             data_validation=data["stratify_none"]["dataset_valid"],
             data_test=data["stratify_none"]["dataset_test"],
+            data_unlabeled=data["stratify_none"]["dataset_unlabeled"],
             class_weights_train=data["stratify_none"]["class_weights_train"],
             batch_size=config.batch_size,
         )
 
-        for dataloader, stage in [
+        for dataloader, phase in [
             (dataloader["train"], "train"),
             (dataloader["test"], "test"),
             (dataloader["valid"], "val"),
+            (dataloader["unlabeled"], "new"),
         ]:
             # Validation
             valid_epoch(
@@ -538,8 +557,9 @@ def create_embeddings(
                 num_labels=num_labels,
                 class_labels=[target2name[lab] for lab in range(num_labels)],
                 device=device,
-                stage=stage,
-                is_pretrained=is_pretrained,
+                phase=phase,
+                from_saved_model=from_saved_model,
+                logging_to_wandb=logging_to_wandb,
                 save_emb=save_emb,
             )
 

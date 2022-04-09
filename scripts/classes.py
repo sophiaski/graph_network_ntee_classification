@@ -35,17 +35,19 @@ class ExperimentDataSplit(TypedDict, total=False):
     train: DataFrame
     valid: DataFrame
     test: DataFrame
-    unlabeled: DataFrame
     split_size: Tuple[int, int, int]
+    unlabeled: DataFrame
     dataset_train: NGODataset
     dataset_valid: NGODataset
     dataset_test: NGODataset
     dataset_unlabeled: NGODataset
+
     class_weights_train: Tensor
 
 
 class ExperimentData(TypedDict, total=False):
     data: DataFrame
+    unlabeled: DataFrame
     num_labels: int
     target2group: Dict[int, str]
     group2name: Dict[str, str]
