@@ -8,56 +8,75 @@ EXPERIMENT_KEYS = [
     ["sklearn", "none"],
     ["train", "valid", "test", "unlabeled"],
 ]
-SWEEP_INIT = {
+SWEEP_INIT_NTEE = {
     "optimizer": "adam",
-    "learning_rate": 5e-05,
+    "learning_rate": 3e-05,
     "epochs": 1,
-    "batch_size": 16,
-    "classifier_dropout": 0.3,
-    "perc_warmup_steps": 0.25,
-    "max_length": 256,
-    "clip_grad": True,
-    "frac": 0.25,
+    "batch_size": 32,
+    "classifier_dropout": 0.4,
+    "perc_warmup_steps": 0,
+    "max_length": 128,
+    "clip_grad": False,
+    "split_size": 0.2,
+    "frac": 1.0,
     "complex_graph": True,
-    "add_more_targets": True,
+    "add_more_targets": False,
 }
 
-FINAL_CONFIG = {
-    "ntee": {
-        "cat_type": "ntee",
-        "optimizer": "adam",
-        "learning_rate": 5e-05,
-        "epochs": 1,
-        "batch_size": 16,
-        "classifier_dropout": 0.3,
-        "perc_warmup_steps": 0.25,
-        "max_length": 256,
-        "clip_grad": True,
-        "frac": 1.0,
-        "pretrained_model_path": None,
-        "strat_type": "sklearn",
-        "sampler": "weighted_norm",
-        "complex_graph": True,
-        "add_more_targets": False,
-    },
-    "broad": {
-        "cat_type": "broad",
-        "optimizer": "adam",
-        "learning_rate": 5e-05,
-        "epochs": 1,
-        "batch_size": 16,
-        "classifier_dropout": 0.3,
-        "perc_warmup_steps": 0.25,
-        "max_length": 256,
-        "clip_grad": True,
-        "frac": 1.0,
-        "pretrained_model_path": None,
-        "strat_type": "sklearn",
-        "sampler": "weighted_norm",
-        "complex_graph": True,
-        "add_more_targets": False,
-    },
-}
+
+# "optimizer": {"value": "adam"},
+#         "classifier_dropout": {"value": 0.4},
+#         "learning_rate": {"value": 0.00003},
+#         "epochs": {"value": 3},
+#         "batch_size": {"value": 32},
+#         "split_size": {"value": 0.2},
+#         "perc_warmup_steps": {"value": 0},
+#         "clip_grad": {"value": False},
+#         "max_length": {"value": 128},
+#         "frac": {"value": 1.0},
+#         "complex_graph": {"values": [True, False]},
+#         "add_more_targets": {"values": [True, False]},
+
+# SAME = {
+#     "strat_type": "sklearn",
+#     "sampler": "weighted_norm",
+#     "clip_grad": False,
+#     "frac": 1.0,
+#     "optimizer": "adam",
+#     "split_size": 0.2,
+# }
+
+# FINAL_CONFIG = {
+#     "ntee": {
+#         "cat_type": "ntee",
+#         "learning_rate": 5e-05,
+#         "epochs": 1,
+#         "batch_size": 16,
+#         "classifier_dropout": 0.3,
+#         "perc_warmup_steps": 0.25,
+#         "max_length": 128,
+#         "pretrained_model_path": None,
+#         "complex_graph": False,
+#         "add_more_targets": False,
+#     },
+#     "broad": {
+#         "cat_type": "broad",
+#         "optimizer": "adam",
+#         "learning_rate": 5e-05,
+#         "epochs": 1,
+#         "batch_size": 16,
+#         "classifier_dropout": 0.3,
+#         "perc_warmup_steps": 0.25,
+#         "max_length": 256,
+#         "clip_grad": True,
+#         "frac": 1.0,
+#         "pretrained_model_path": None,
+#         "strat_type": "sklearn",
+#         "sampler": "weighted_norm",
+#         "complex_graph": True,
+#         "add_more_targets": False,
+#     },
+# }
 
 # Very broad random search
 SWEEP_CONFIG_Mar12 = {
@@ -128,19 +147,40 @@ SWEEP_CONFIG_Mar15 = {
         "frac": {"values": [1.0]},
     },
 }
-
-SWEEP_CONFIG = {
+# FOR BROAD
+SWEEP_CONFIG_BROAD = {
     "method": "grid",
     "metric": {"name": "val_acc", "goal": "maximize"},
     "parameters": {
         "optimizer": {"value": "adam"},
         "classifier_dropout": {"value": 0.3},
         "learning_rate": {"value": 0.00005},
-        "epochs": {"value": 2},
-        "batch_size": {"value": 16},
-        "perc_warmup_steps": {"value": 0.2},
-        "clip_grad": {"value": True},
-        "max_length": {"value": 256},
+        "epochs": {"value": 3},
+        "batch_size": {"value": 32},
+        "split_size": {"value": 0.2},
+        "perc_warmup_steps": {"value": 0.1},
+        "clip_grad": {"value": False},
+        "max_length": {"value": 128},
+        "frac": {"value": 1.0},
+        "complex_graph": {"values": [True, False]},
+        "add_more_targets": {"value": False},
+    },
+}
+
+# FOR NTEE
+SWEEP_CONFIG_NTEE = {
+    "method": "grid",
+    "metric": {"name": "val_acc", "goal": "maximize"},
+    "parameters": {
+        "optimizer": {"value": "adam"},
+        "classifier_dropout": {"value": 0.4},
+        "learning_rate": {"value": 0.00003},
+        "epochs": {"value": 3},
+        "batch_size": {"value": 32},
+        "split_size": {"value": 0.2},
+        "perc_warmup_steps": {"value": 0},
+        "clip_grad": {"value": False},
+        "max_length": {"value": 128},
         "frac": {"value": 1.0},
         "complex_graph": {"values": [True, False]},
         "add_more_targets": {"values": [True, False]},

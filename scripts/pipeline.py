@@ -14,7 +14,7 @@ def train_broad_weighted_norm():
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
     return train(
-        config=SWEEP_INIT,
+        config=SWEEP_INIT_BROAD,
         cat_type="broad",
         strat_type="sklearn",
         sampler="weighted_norm",
@@ -30,7 +30,7 @@ def train_ntee_weighted_norm():
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
     return train(
-        config=SWEEP_INIT,
+        config=SWEEP_INIT_NTEE,
         cat_type="ntee",
         strat_type="sklearn",
         sampler="weighted_norm",
@@ -125,6 +125,7 @@ def train(
             strat_type=strat_type,
             max_length=config.max_length,
             sampler=sampler,
+            split_size=config.split_size,
             complex_graph=config.complex_graph,
             add_more_targets=config.add_more_targets,
             frac=config.frac,
@@ -172,7 +173,7 @@ def train(
 
             if verbose:
                 print(
-                    f"Number of training examples: {len(dataloader['train'])*config.batch_size:,}"
+                    f"Number of training examples: {len(dataloader['train'])*config.batch_size:,}\nNumber of batches: {len(dataloader['train']):,}"
                 )
 
             # Train
@@ -203,7 +204,7 @@ def train(
         # Save model
         if save_model:
             # Vars
-            filename = "model"
+            filename = cat_type
             if config.complex_graph:
                 filename += "_complex"
             else:
@@ -325,6 +326,9 @@ def valid_epoch(
     model.eval()
     cumu_loss = 0.0
 
+    if logging_to_wandb:
+        log_cnt = 0
+
     # Set up progress bar
     progress_bar = tqdm(
         dataloader, desc=f"Epoch {epoch+1:1d}", leave=False, disable=False,
@@ -389,6 +393,7 @@ def valid_epoch(
         # Log to W&B and print output
         if logging_to_wandb:
             wandb.log({f"{phase}_loss_batch": loss_avg_batch_valid})
+            log_cnt += 1
         progress_bar.set_postfix({f"{phase}_loss_batch": f"{loss_avg_batch_valid:.3f}"})
         preds_all.append(preds)
         true_labels_all.append(true_labels)
@@ -421,7 +426,7 @@ def valid_epoch(
         else:
             filename = f"model_{cat_type}_{phase}"
         save_to_json(
-            data=dict(zip(eins, embs_all)), loc=EMBEDDINGS_PATH, filename=phase
+            data=dict(zip(eins, embs_all)), loc=EMBEDDINGS_PATH, filename=filename
         )
 
     # Log to W&B and print output
@@ -438,23 +443,51 @@ def valid_epoch(
             {f"{phase}_val_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
         )
         wandb.log(epoch_scores)
+        log_cnt += 1
 
+        # Randomly sample 10K datapoints (WandB limit)
+        sampling_indices_by_lab = {}
+        min_idx = round(10000 / num_labels)
+
+        # First grab indices for each label class in the true_labels_all tensor
+        for lab in np.arange(num_labels):
+            indices = (true_labels_all == lab).nonzero(as_tuple=True)[0]
+            if len(indices) < min_idx:
+                min_idx = len(indices)
+            sampling_indices_by_lab[lab] = indices
+
+        # Then sample evenly across
+        samps = []
+        for lab in np.arange(num_labels):
+            samps.append(
+                torch.tensor(
+                    np.random.choice(
+                        sampling_indices_by_lab[lab], size=min_idx, replace=False
+                    )
+                )
+            )
+        # Combine to apply to the true labels / pred labels tensors
+        balanced_samples = torch.cat(samps, dim=0)
+        true_labels_all_samp = true_labels_all[balanced_samples]
+        preds_all_samp = preds_labels_all[balanced_samples]
         # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
         wandb.log(
             {
                 f"{phase}_pr_curve": wandb.plot.pr_curve(
-                    true_labels_all, preds_all, labels=class_labels,
+                    true_labels_all_samp, preds_all_samp, labels=class_labels,
                 ),
                 f"{phase}_roc_curve": wandb.plot.roc_curve(
-                    true_labels_all, preds_all, labels=class_labels,
+                    true_labels_all_samp, preds_all_samp, labels=class_labels,
                 ),
                 f"{phase}_conf_mat": wandb.plot.confusion_matrix(
-                    y_true=true_labels_all.numpy(),
-                    preds=preds_labels_all.numpy(),
+                    y_true=true_labels_all_samp.numpy(),
+                    preds=preds_all_samp.numpy(),
                     class_names=class_labels,
                 ),
             },
         )
+        log_cnt += 1
+        print(f"Number of WandB logs for this epoch: {log_cnt}")
     # For progress display
     tqdm.write(f"{phase}_loss: {loss_avg}")
 
@@ -472,7 +505,8 @@ def valid_epoch(
 def create_embeddings(
     config: Mapping, save_emb: bool = False, verbose: bool = True,
 ):
-
+    # if you are planning to use BERT as the input to another language model, you would not modify the outputs from BERT.
+    # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8624482/
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
@@ -504,6 +538,7 @@ def create_embeddings(
             strat_type=config.strat_type,
             max_length=config.max_length,
             sampler=config.sampler,
+            split_size=config.split_size,
             complex_graph=config.complex_graph,
             add_more_targets=config.add_more_targets,
             frac=config.frac,

@@ -23,6 +23,7 @@ from transformers import get_linear_schedule_with_warmup
 
 # SoftMax, Normalize
 from torch.nn.functional import softmax, normalize
+from sklearn.utils import class_weight
 
 # Metrics
 from torchmetrics import Accuracy, F1Score
@@ -40,6 +41,7 @@ def build_data(
     strat_type: str,
     max_length: int,
     sampler: str,
+    split_size: float,
     complex_graph: bool = False,
     add_more_targets: bool = False,
     frac: float = 1.0,
@@ -71,6 +73,7 @@ def build_data(
     split_data_dict = split_data(
         experiment_dict=encoded_data_dict,
         strat_type=strat_type,
+        split_size=split_size,
         seed=seed,
         verbose=verbose,
     )
@@ -162,6 +165,7 @@ def encode_targets(
 def split_data(
     experiment_dict: ExperimentData,
     strat_type: str,
+    split_size: float,
     seed: int = SEED,
     verbose: bool = True,
 ) -> ExperimentData:
@@ -193,13 +197,13 @@ def split_data(
         if verbose:
             print("\tSplitting train+val by randomness.")
         experiment_dict["stratify_none"] = stratify_by(
-            data=data, stratify=False, seed=seed
+            data=data, split_size=split_size, stratify=False, seed=seed
         )
     elif strat_type == "sklearn":  # Use stratified sampling
         if verbose:
             print("\tStratifiying train+val by target values.")
         experiment_dict["stratify_sklearn"] = stratify_by(
-            data=data, stratify=True, seed=seed
+            data=data, split_size=split_size, stratify=True, seed=seed
         )
 
     if verbose:
@@ -215,7 +219,7 @@ def split_data(
 
 @typechecked
 def stratify_by(
-    data: pd.DataFrame, stratify: bool = True, seed: int = SEED,
+    data: pd.DataFrame, split_size: float, stratify: bool = True, seed: int = SEED,
 ) -> ExperimentDataSplit:
     """Split arrays into random train and test subsets.
 
@@ -242,14 +246,14 @@ def stratify_by(
         # Split train into train-val w/ stratification
         (train, validation,) = train_test_split(
             trainval,
-            test_size=0.2,
+            test_size=split_size,
             stratify=trainval["target"].values,
             random_state=seed,
         )
     else:
         # Split train into train-val w/o stratifying
         (train, validation,) = train_test_split(
-            trainval, test_size=0.2, random_state=seed,
+            trainval, test_size=split_size, random_state=seed,
         )
 
     return {
@@ -301,12 +305,19 @@ def tokenize_data(
                         print(
                             f"\t\t\tCreating class weights to help with imbalance in WeightedRandomSampler."
                         )
-                    targets = split_df["target"].values
+                    targets = torch.tensor(split_df["target"].values, dtype=torch.long)
 
-                    class_counts = torch.tensor(
-                        [val[1] for val in sorted(Counter(targets).items())]
+                    # class_counts = torch.tensor(
+                    #     [val[1] for val in sorted(Counter(targets).items())]
+                    # )
+                    # class_weights = 1.0 / class_counts
+
+                    class_weights = torch.tensor(
+                        class_weight.compute_class_weight(
+                            "balanced", np.unique(targets), targets.numpy()
+                        ),
+                        dtype=torch.float,
                     )
-                    class_weights = 1.0 / class_counts
                     if sampler == "weighted_norm":
                         if verbose:
                             print("\t\t\t (Normalize them)")
@@ -353,16 +364,14 @@ def get_dataloader(
     )
     # Sequential sampling for validation
     dataloader_validation = DataLoader(
-        dataset=data_validation, shuffle=False, batch_size=batch_size,
+        dataset=data_validation, shuffle=False, batch_size=8,
     )
     # Sequential sampling for test
-    dataloader_test = DataLoader(
-        dataset=data_test, shuffle=False, batch_size=batch_size,
-    )
+    dataloader_test = DataLoader(dataset=data_test, shuffle=False, batch_size=8,)
 
     # Sequential sampling for unlabeled
     dataloader_unlabeled = DataLoader(
-        dataset=data_unlabeled, shuffle=False, batch_size=batch_size,
+        dataset=data_unlabeled, shuffle=False, batch_size=8,
     )
 
     return {
