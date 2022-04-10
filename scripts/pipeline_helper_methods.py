@@ -118,7 +118,7 @@ def encode_targets(
 
     # For unlabeled nodes, encode groups as -1
     unlabeled = data[data[col_name] == unlabeled_group].copy()
-    unlabeled.loc[:, f"{col_name}_target"] = -1
+    unlabeled.loc[:, f"{col_name}_target"] = 0
     if verbose:
         print(
             f"\tFound {unlabeled.shape[0]} unlabeled organizations in this dataset, ignoring in training."
@@ -305,13 +305,8 @@ def tokenize_data(
                         print(
                             f"\t\t\tCreating class weights to help with imbalance in WeightedRandomSampler."
                         )
+                    # Converting target labels into tensor
                     targets = torch.tensor(split_df["target"].values, dtype=torch.long)
-
-                    # class_counts = torch.tensor(
-                    #     [val[1] for val in sorted(Counter(targets).items())]
-                    # )
-                    # class_weights = 1.0 / class_counts
-
                     class_weights = torch.tensor(
                         class_weight.compute_class_weight(
                             "balanced", np.unique(targets), targets.numpy()
@@ -364,14 +359,14 @@ def get_dataloader(
     )
     # Sequential sampling for validation
     dataloader_validation = DataLoader(
-        dataset=data_validation, shuffle=False, batch_size=8,
+        dataset=data_validation, shuffle=False, batch_size=64,
     )
     # Sequential sampling for test
-    dataloader_test = DataLoader(dataset=data_test, shuffle=False, batch_size=8,)
+    dataloader_test = DataLoader(dataset=data_test, shuffle=False, batch_size=64)
 
     # Sequential sampling for unlabeled
     dataloader_unlabeled = DataLoader(
-        dataset=data_unlabeled, shuffle=False, batch_size=8,
+        dataset=data_unlabeled, shuffle=False, batch_size=64,
     )
 
     return {
@@ -480,3 +475,134 @@ def get_scheduler(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_batches * epochs,
     )
+
+
+@typechecked
+def create_saved_model_path(
+    ntee: bool = False,
+    complex_graph: bool = False,
+    add_more_targets: bool = False,
+    saved_model_vers: Optional[str] = None,
+) -> str:
+    filepath = MODELS_PATH
+    if ntee:
+        filepath += "ntee"
+    else:
+        filepath += "broad"
+    if complex_graph:
+        filepath += "_complex"
+    else:
+        filepath += "_simple"
+    if add_more_targets:
+        filepath += "_w_more_targets"
+    if saved_model_vers:
+        filepath += f"_{saved_model_vers}"
+    return filepath
+
+
+@typechecked
+def create_CONFIG(
+    ntee: bool = False,
+    complex_graph: bool = False,
+    add_more_targets: bool = False,
+    from_saved_model: bool = False,
+    saved_model_vers: Optional[str] = None,
+) -> Dict:
+    ALL_CONFIG = {
+        "optimizer": "adam",
+        "epochs": 3,
+        "batch_size": 32,
+        "max_length": 128,
+        "clip_grad": False,
+        "split_size": 0.2,
+        "frac": 1.0,
+        "strat_type": "sklearn",
+        "sampler": "weighted_norm",
+    }
+
+    if ntee:
+        # Best model: NTEE
+        CATEGORY_CONFIG = {
+            "cat_type": "ntee",
+            "learning_rate": 3e-05,
+            "classifier_dropout": 0.4,
+            "perc_warmup_steps": 0,
+        }
+    else:
+        # Best model: BROAD
+        CATEGORY_CONFIG = {
+            "cat_type": "broad",
+            "learning_rate": 5e-05,
+            "classifier_dropout": 0.3,
+            "perc_warmup_steps": 0.1,
+        }
+    Merge(ALL_CONFIG, CATEGORY_CONFIG)
+
+    if add_more_targets:
+        ALL_CONFIG["add_more_targets"] = True
+    else:
+        ALL_CONFIG["add_more_targets"] = False
+    if complex_graph:
+        ALL_CONFIG["complex_graph"] = True
+    else:
+        ALL_CONFIG["complex_graph"] = False
+
+    if from_saved_model:
+        ALL_CONFIG["saved_model_path"] = create_saved_model_path(
+            ntee=ntee,
+            complex_graph=complex_graph,
+            add_more_targets=add_more_targets,
+            saved_model_vers=saved_model_vers,
+        )
+    else:
+        ALL_CONFIG["saved_model_path"] = None
+    return ALL_CONFIG
+
+
+NTEE_SIMPLE = create_CONFIG(ntee=True, complex_graph=False)
+NTEE_COMPLEX = create_CONFIG(ntee=True, complex_graph=True)
+BROAD_SIMPLE = create_CONFIG(ntee=False, complex_graph=False)
+BROAD_COMPLEX = create_CONFIG(ntee=False, complex_graph=True)
+NTEE_SIMPLE_SAVED = create_CONFIG(
+    ntee=True, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"
+)
+NTEE_COMPLEX_SAVED = create_CONFIG(
+    ntee=True, complex_graph=True, from_saved_model=True, saved_model_vers="04-09"
+)
+BROAD_SIMPLE_SAVED = create_CONFIG(
+    ntee=False, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"
+)
+BROAD_COMPLEX_SAVED = create_CONFIG(
+    ntee=False, complex_graph=True, from_saved_model=True, saved_model_vers="04-09"
+)
+
+
+@typechecked
+def load_embs(
+    ntee: bool = False,
+    complex_graph: bool = False,
+    add_more_targets: bool = False,
+    from_saved_model: bool = False,
+) -> Dict:
+    loc = EMBEDDINGS_PATH
+    if ntee:
+        loc += "ntee"
+    else:
+        loc += "broad"
+    if complex_graph:
+        loc += "_complex"
+    else:
+        loc += "_simple"
+    if add_more_targets:
+        loc += "_w_added_targets"
+    loc += "/"
+
+    if from_saved_model:
+        filename = "_from_saved"
+    else:
+        filename = ""
+    embs_dict = {}
+    for phase in ["TRAIN", "VAL", "TEST", "NEW"]:
+        sub_dict = load_json(loc=loc, filename=f"{phase}{filename}")
+
+    return eins, embs

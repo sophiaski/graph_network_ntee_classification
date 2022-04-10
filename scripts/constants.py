@@ -8,145 +8,7 @@ EXPERIMENT_KEYS = [
     ["sklearn", "none"],
     ["train", "valid", "test", "unlabeled"],
 ]
-SWEEP_INIT_NTEE = {
-    "optimizer": "adam",
-    "learning_rate": 3e-05,
-    "epochs": 1,
-    "batch_size": 32,
-    "classifier_dropout": 0.4,
-    "perc_warmup_steps": 0,
-    "max_length": 128,
-    "clip_grad": False,
-    "split_size": 0.2,
-    "frac": 1.0,
-    "complex_graph": True,
-    "add_more_targets": False,
-}
 
-
-# "optimizer": {"value": "adam"},
-#         "classifier_dropout": {"value": 0.4},
-#         "learning_rate": {"value": 0.00003},
-#         "epochs": {"value": 3},
-#         "batch_size": {"value": 32},
-#         "split_size": {"value": 0.2},
-#         "perc_warmup_steps": {"value": 0},
-#         "clip_grad": {"value": False},
-#         "max_length": {"value": 128},
-#         "frac": {"value": 1.0},
-#         "complex_graph": {"values": [True, False]},
-#         "add_more_targets": {"values": [True, False]},
-
-# SAME = {
-#     "strat_type": "sklearn",
-#     "sampler": "weighted_norm",
-#     "clip_grad": False,
-#     "frac": 1.0,
-#     "optimizer": "adam",
-#     "split_size": 0.2,
-# }
-
-# FINAL_CONFIG = {
-#     "ntee": {
-#         "cat_type": "ntee",
-#         "learning_rate": 5e-05,
-#         "epochs": 1,
-#         "batch_size": 16,
-#         "classifier_dropout": 0.3,
-#         "perc_warmup_steps": 0.25,
-#         "max_length": 128,
-#         "pretrained_model_path": None,
-#         "complex_graph": False,
-#         "add_more_targets": False,
-#     },
-#     "broad": {
-#         "cat_type": "broad",
-#         "optimizer": "adam",
-#         "learning_rate": 5e-05,
-#         "epochs": 1,
-#         "batch_size": 16,
-#         "classifier_dropout": 0.3,
-#         "perc_warmup_steps": 0.25,
-#         "max_length": 256,
-#         "clip_grad": True,
-#         "frac": 1.0,
-#         "pretrained_model_path": None,
-#         "strat_type": "sklearn",
-#         "sampler": "weighted_norm",
-#         "complex_graph": True,
-#         "add_more_targets": False,
-#     },
-# }
-
-# Very broad random search
-SWEEP_CONFIG_Mar12 = {
-    "method": "random",
-    "metric": {"name": "val_loss", "goal": "minimize"},
-    "parameters": {
-        "optimizer": {"values": ["adam"]},
-        "learning_rate": {"values": [0.001, 0.0001, 0.00002, 0.00003, 0.00005]},
-        "epochs": {"values": [2, 3]},
-        "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
-        "batch_size": {"values": [8, 16, 32]},
-        "perc_warmup_steps": {"values": [0, 0.01, 0.1, 0.25]},
-        "clip_grad": {"values": [True, False]},
-        "max_length": {"values": [64, 128, 256]},
-        "frac": {"values": [0.25, 0.5, 0.75]},
-    },
-}
-
-# More constrained random search
-SWEEP_CONFIG_Mar13 = {
-    "method": "random",
-    "metric": {"name": "val_loss", "goal": "minimize"},
-    "parameters": {
-        "optimizer": {"values": ["adam"]},
-        "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
-        "learning_rate": {"values": [0.00003, 0.00005]},
-        "epochs": {"values": [1, 2]},
-        "batch_size": {"values": [8, 16, 32]},
-        "perc_warmup_steps": {"values": [0.1, 0.25]},
-        "clip_grad": {"values": [False]},
-        "max_length": {"values": [64]},
-        "frac": {"values": [0.7, 0.9]},
-        "replacement": {"values": [True]},
-    },
-}
-
-# Final baseline random search, switching to maximizing accuracy
-SWEEP_CONFIG_Mar14 = {
-    "method": "random",
-    "metric": {"name": "val_acc", "goal": "maximize"},
-    "parameters": {
-        "optimizer": {"values": ["adam"]},
-        "classifier_dropout": {"values": [0.1, 0.3, 0.4]},
-        "learning_rate": {"values": [0.00002, 0.00003, 0.00005]},
-        "epochs": {"values": [1]},
-        "batch_size": {"values": [16, 32, 64]},
-        "perc_warmup_steps": {"values": [0, 0.25, 0.5]},
-        "clip_grad": {"values": [False]},
-        "max_length": {"values": [64]},
-        "frac": {"values": [1.0]},
-    },
-}
-
-# Final baseline grid search, switching to maximizing accuracy
-# SWEEP_CONFIG_Mar15
-SWEEP_CONFIG_Mar15 = {
-    "method": "random",
-    "metric": {"name": "val_acc", "goal": "maximize"},
-    "parameters": {
-        "optimizer": {"values": ["adam"]},
-        "classifier_dropout": {"values": [0.1, 0.2, 0.3, 0.4]},
-        "learning_rate": {"values": [0.00005, 0.00003, 0.00002]},
-        "epochs": {"values": [2, 3]},
-        "batch_size": {"values": [16, 32, 64]},
-        "perc_warmup_steps": {"values": [0, 0.1]},
-        "clip_grad": {"values": [False]},
-        "max_length": {"values": [64]},
-        "frac": {"values": [1.0]},
-    },
-}
 # FOR BROAD
 SWEEP_CONFIG_BROAD = {
     "method": "grid",
@@ -183,7 +45,7 @@ SWEEP_CONFIG_NTEE = {
         "max_length": {"value": 128},
         "frac": {"value": 1.0},
         "complex_graph": {"values": [True, False]},
-        "add_more_targets": {"values": [True, False]},
+        "add_more_targets": {"value": False},
     },
 }
 
@@ -328,7 +190,7 @@ NTEE_NAME = {
     "Z": "Unknown, Unclassified",
 }
 
-# Graph! Simple
+# Graph dataframe columns
 NODE_COLS = [
     "ein",
     "node_type",
@@ -339,6 +201,73 @@ NODE_COLS = [
 ]
 EDGE_COLS = ["src", "dst", "edge_type", "tax_period", "cash_grant_amt"]
 
-# Graph! Complex
-NODE_COLS_COMPLEX = []
-EDGE_COLS_COMPLEX = []
+
+# # Very broad random search
+# SWEEP_CONFIG_Mar12 = {
+#     "method": "random",
+#     "metric": {"name": "val_loss", "goal": "minimize"},
+#     "parameters": {
+#         "optimizer": {"values": ["adam"]},
+#         "learning_rate": {"values": [0.001, 0.0001, 0.00002, 0.00003, 0.00005]},
+#         "epochs": {"values": [2, 3]},
+#         "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
+#         "batch_size": {"values": [8, 16, 32]},
+#         "perc_warmup_steps": {"values": [0, 0.01, 0.1, 0.25]},
+#         "clip_grad": {"values": [True, False]},
+#         "max_length": {"values": [64, 128, 256]},
+#         "frac": {"values": [0.25, 0.5, 0.75]},
+#     },
+# }
+
+# # More constrained random search
+# SWEEP_CONFIG_Mar13 = {
+#     "method": "random",
+#     "metric": {"name": "val_loss", "goal": "minimize"},
+#     "parameters": {
+#         "optimizer": {"values": ["adam"]},
+#         "classifier_dropout": {"values": [0.1, 0.3, 0.5]},
+#         "learning_rate": {"values": [0.00003, 0.00005]},
+#         "epochs": {"values": [1, 2]},
+#         "batch_size": {"values": [8, 16, 32]},
+#         "perc_warmup_steps": {"values": [0.1, 0.25]},
+#         "clip_grad": {"values": [False]},
+#         "max_length": {"values": [64]},
+#         "frac": {"values": [0.7, 0.9]},
+#         "replacement": {"values": [True]},
+#     },
+# }
+
+# # Final baseline random search, switching to maximizing accuracy
+# SWEEP_CONFIG_Mar14 = {
+#     "method": "random",
+#     "metric": {"name": "val_acc", "goal": "maximize"},
+#     "parameters": {
+#         "optimizer": {"values": ["adam"]},
+#         "classifier_dropout": {"values": [0.1, 0.3, 0.4]},
+#         "learning_rate": {"values": [0.00002, 0.00003, 0.00005]},
+#         "epochs": {"values": [1]},
+#         "batch_size": {"values": [16, 32, 64]},
+#         "perc_warmup_steps": {"values": [0, 0.25, 0.5]},
+#         "clip_grad": {"values": [False]},
+#         "max_length": {"values": [64]},
+#         "frac": {"values": [1.0]},
+#     },
+# }
+
+# # Another baseline grid search, switching to maximizing accuracy
+# # SWEEP_CONFIG_Mar15
+# SWEEP_CONFIG_Mar15 = {
+#     "method": "random",
+#     "metric": {"name": "val_acc", "goal": "maximize"},
+#     "parameters": {
+#         "optimizer": {"values": ["adam"]},
+#         "classifier_dropout": {"values": [0.1, 0.2, 0.3, 0.4]},
+#         "learning_rate": {"values": [0.00005, 0.00003, 0.00002]},
+#         "epochs": {"values": [2, 3]},
+#         "batch_size": {"values": [16, 32, 64]},
+#         "perc_warmup_steps": {"values": [0, 0.1]},
+#         "clip_grad": {"values": [False]},
+#         "max_length": {"values": [64]},
+#         "frac": {"values": [1.0]},
+#     },
+# }

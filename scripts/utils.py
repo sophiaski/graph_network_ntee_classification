@@ -61,7 +61,7 @@ logging.getLogger().setLevel(logging.ERROR)
 PROJECT_ROOT = os.path.dirname(os.path.abspath(os.curdir))
 SCHEMA_PATH = f"{PROJECT_ROOT+'/schemas/'}"
 MODELS_PATH = f"{PROJECT_ROOT+'/models/'}"
-EMBEDDINGS_PATH = f"{PROJECT_ROOT+'/emb/'}"
+EMBEDDINGS_PATH = f"{PROJECT_ROOT+'/embs/'}"
 
 # For saving intermediate dataset processing
 BRONZE_PATH = f"{PROJECT_ROOT+'/data/bronze/'}"
@@ -84,22 +84,6 @@ GRAPH_GOLD_PATH = f"{GOLD_PATH+'graph/'}"
 def Merge(dict1: Mapping, dict2: Mapping) -> None:
     """Merge two dictionaries"""
     return dict1.update(dict2)
-
-
-# from prettytable import PrettyTable
-
-# def count_parameters(model: torch.Module):
-#     table = PrettyTable(["Modules", "Parameters"])
-#     total_params = 0
-#     for name, parameter in model.named_parameters():
-#         if not parameter.requires_grad:
-#             continue
-#         params = parameter.numel()
-#         table.add_row([name, params])
-#         total_params += params
-#     print(table)
-#     print(f"Total Trainable Params: {total_params}")
-#     return total_params
 
 
 @typechecked
@@ -155,7 +139,7 @@ def load_parquet(
 
 
 @typechecked
-def load_json(loc: str, filename: str) -> Dict[str, str]:
+def load_json(loc: str, filename: str) -> Dict:
     """Load a json file as a python dictionary.
 
     Args:
@@ -224,3 +208,18 @@ def readable_list(seq: List[Any]) -> str:
         return " and ".join(seq)
     return ", ".join(seq[:-1]) + ", and " + seq[-1]
 
+
+# from prettytable import PrettyTable
+
+# def count_parameters(model: torch.Module):
+#     table = PrettyTable(["Modules", "Parameters"])
+#     total_params = 0
+#     for name, parameter in model.named_parameters():
+#         if not parameter.requires_grad:
+#             continue
+#         params = parameter.numel()
+#         table.add_row([name, params])
+#         total_params += params
+#     print(table)
+#     print(f"Total Trainable Params: {total_params}")
+#     return total_params

@@ -3,10 +3,11 @@
 # 🄱🄴🅁🅃 🄵🄾🅁 🅂🄴🅀🅄🄴🄽🄲🄴 🄲🄻🄰🅂🅂🄸🄵🄸🄲🄰🅃🄸🄾🄽
 
 # Helper methods to clear up the script
+from numpy import complex_
 from pipeline_helper_methods import *
 
 
-def train_broad_weighted_norm():
+def train_broad():
     """
     Experiment using
     ✓ Broad category targets for classification.
@@ -14,7 +15,7 @@ def train_broad_weighted_norm():
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
     return train(
-        config=SWEEP_INIT_BROAD,
+        config=BROAD_SIMPLE,
         cat_type="broad",
         strat_type="sklearn",
         sampler="weighted_norm",
@@ -22,7 +23,7 @@ def train_broad_weighted_norm():
     )
 
 
-def train_ntee_weighted_norm():
+def train_ntee():
     """
     Experiment using
     ✓ NTEE1 category targets for classification.
@@ -30,7 +31,7 @@ def train_ntee_weighted_norm():
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
     return train(
-        config=SWEEP_INIT_NTEE,
+        config=NTEE_SIMPLE,
         cat_type="ntee",
         strat_type="sklearn",
         sampler="weighted_norm",
@@ -204,18 +205,19 @@ def train(
         # Save model
         if save_model:
             # Vars
-            filename = cat_type
-            if config.complex_graph:
-                filename += "_complex"
+            if cat_type == "ntee":
+                ntee = True
             else:
-                filename += "_simple"
-            if config.add_more_targets:
-                filename += "_w_added_targets"
-            filename += "_" + date.today().strftime("%m-%d")
-
+                ntee = False
+            filepath = create_saved_model_path(
+                ntee=ntee,
+                complex_graph=config.complex_graph,
+                add_more_targets=config.add_more_targets,
+                saved_model_vers=date.today().strftime("%m-%d"),
+            )
             #  For exporting the model and running inference later.
             torch.save(
-                model.state_dict(), f"{MODELS_PATH}{filename}",
+                model.state_dict(), filepath,
             )
 
         torch.cuda.empty_cache()
@@ -245,6 +247,7 @@ def train_epoch(
     # Update state to train
     model.train()
     cumu_loss = 0.0
+    log_cnt = 0
 
     # Set up progress bar
     progress_bar = tqdm(
@@ -284,7 +287,9 @@ def train_epoch(
         loss_avg_batch = loss.item() / len(batch)
 
         # Log to W&B and print output
-        wandb.log({"loss_batch": loss_avg_batch})
+        if log_cnt % 10 == 0:
+            wandb.log({"loss_batch": loss_avg_batch})
+        log_cnt += 1
         progress_bar.set_postfix({"loss_batch": f"{loss_avg_batch:.3f}"})
 
         # Adjust the learning rate based on the number of batches
@@ -295,6 +300,7 @@ def train_epoch(
 
     # Log to W&B and print output
     wandb.log({"loss": loss_avg})
+    log_cnt += 1
     tqdm.write(f"loss: {loss_avg}")
 
     return loss_avg
@@ -392,7 +398,8 @@ def valid_epoch(
 
         # Log to W&B and print output
         if logging_to_wandb:
-            wandb.log({f"{phase}_loss_batch": loss_avg_batch_valid})
+            if log_cnt % 10 == 0:
+                wandb.log({f"{phase}_loss_batch": loss_avg_batch_valid})
             log_cnt += 1
         progress_bar.set_postfix({f"{phase}_loss_batch": f"{loss_avg_batch_valid:.3f}"})
         preds_all.append(preds)
@@ -415,19 +422,14 @@ def valid_epoch(
 
     # Save embeddings to JSON
     if save_emb:
-        # Get name for category from num_labels
-        if num_labels == 9:
-            cat_type = "broad"
-        else:
-            cat_type = "ntee"
-
+        print(f"Saving BERT Output Embeddings: {embs_all.shape}")
+        print(f"Number of EINS: {len(eins)}")
         if from_saved_model:
-            filename = f"pretrained_model_{cat_type}_{phase}"
+            filename = f"{phase.upper()}_from_saved"
         else:
-            filename = f"model_{cat_type}_{phase}"
-        save_to_json(
-            data=dict(zip(eins, embs_all)), loc=EMBEDDINGS_PATH, filename=filename
-        )
+            filename = phase
+        np.save("{loc}{filename}.npy", embs_all)
+        np.save("{loc}{filename}.npy", eins)
 
     # Log to W&B and print output
     if logging_to_wandb:
@@ -447,7 +449,7 @@ def valid_epoch(
 
         # Randomly sample 10K datapoints (WandB limit)
         sampling_indices_by_lab = {}
-        min_idx = round(10000 / num_labels)
+        min_idx = round(9999 / num_labels)
 
         # First grab indices for each label class in the true_labels_all tensor
         for lab in np.arange(num_labels):
@@ -469,7 +471,8 @@ def valid_epoch(
         # Combine to apply to the true labels / pred labels tensors
         balanced_samples = torch.cat(samps, dim=0)
         true_labels_all_samp = true_labels_all[balanced_samples]
-        preds_all_samp = preds_labels_all[balanced_samples]
+        preds_all_samp = preds_all[balanced_samples]
+        preds_labels_all_samp = preds_labels_all[balanced_samples]
         # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
         wandb.log(
             {
@@ -481,7 +484,7 @@ def valid_epoch(
                 ),
                 f"{phase}_conf_mat": wandb.plot.confusion_matrix(
                     y_true=true_labels_all_samp.numpy(),
-                    preds=preds_all_samp.numpy(),
+                    preds=preds_labels_all_samp.numpy(),
                     class_names=class_labels,
                 ),
             },
@@ -502,9 +505,10 @@ def valid_epoch(
 # ╚══════╝╚═╝░░░░░╚═╝╚═════╝░╚══════╝╚═════╝░╚═════╝░╚═╝╚═╝░░╚══╝░╚═════╝░╚═════╝░
 
 
+@typechecked
 def create_embeddings(
     config: Mapping, save_emb: bool = False, verbose: bool = True,
-):
+) -> Dict:
     # if you are planning to use BERT as the input to another language model, you would not modify the outputs from BERT.
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8624482/
     random.seed(SEED)
@@ -570,14 +574,17 @@ def create_embeddings(
 
         # Load dataloaders
         dataloader = get_dataloader(
-            data_train=data["stratify_none"]["dataset_train"],
-            data_validation=data["stratify_none"]["dataset_valid"],
-            data_test=data["stratify_none"]["dataset_test"],
-            data_unlabeled=data["stratify_none"]["dataset_unlabeled"],
-            class_weights_train=data["stratify_none"]["class_weights_train"],
+            data_train=data[f"stratify_{config.strat_type}"]["dataset_train"],
+            data_validation=data[f"stratify_{config.strat_type}"]["dataset_valid"],
+            data_test=data[f"stratify_{config.strat_type}"]["dataset_test"],
+            data_unlabeled=data[f"stratify_{config.strat_type}"]["dataset_unlabeled"],
+            class_weights_train=data[f"stratify_{config.strat_type}"][
+                "class_weights_train"
+            ],
             batch_size=config.batch_size,
         )
 
+        tot_embs_dict = {}
         for dataloader, phase in [
             (dataloader["train"], "train"),
             (dataloader["test"], "test"),
@@ -598,4 +605,5 @@ def create_embeddings(
                 save_emb=save_emb,
             )
 
-        return data
+        return tot_embs_dict
+
