@@ -468,6 +468,38 @@ def load_graph_dfs(
     )
 
 
+@typechecked
+def load_embs(
+    ntee: bool = False,
+    complex_graph: bool = False,
+    add_more_targets: bool = False,
+    from_saved_model: bool = False,
+) -> Tuple[np.array, torch.tensor]:
+    loc = EMBEDDINGS_PATH
+    if ntee:
+        loc += "ntee"
+    else:
+        loc += "broad"
+    if complex_graph:
+        loc += "_complex"
+    else:
+        loc += "_simple"
+    if add_more_targets:
+        loc += "_w_added_targets"
+    loc += "/"
+
+    if from_saved_model:
+        filename = "_from_saved"
+    else:
+        filename = ""
+    eins_all, embs_all = np.array([]), []
+    for phase in ["train", "val", "test", "new"]:
+        eins_all = np.append(eins_all, np.load(f"{loc}{phase}{filename}_eins.npy"))
+        embs_all.append(torch.from_numpy(np.load(f"{loc}{phase}{filename}_embs.npy")))
+    embs_all = torch.cat(embs_all, dim=0)
+    return eins_all, embs_all
+
+
 def main():
     """
     Create edges and nodes (gold) of the grants dataset, saving to parquet for easy access.

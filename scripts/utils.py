@@ -51,6 +51,12 @@ import wandb
 # Date
 from datetime import date
 
+# Splitting data
+from sklearn.model_selection import train_test_split
+
+# Preparing data
+from sklearn import preprocessing
+
 # Ignore excessive warnings
 import logging
 

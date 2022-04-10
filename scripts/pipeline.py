@@ -420,16 +420,16 @@ def valid_epoch(
     f1 = f1score_weighted.compute()
     f1_by_label = f1score_by_label.compute()
 
-    # Save embeddings to JSON
+    # Save embeddings to numpy
     if save_emb:
         print(f"Saving BERT Output Embeddings: {embs_all.shape}")
-        print(f"Number of EINS: {len(eins)}")
+        print(f"Number of EINS: {len(eins_all)}")
         if from_saved_model:
-            filename = f"{phase.upper()}_from_saved"
+            filename = f"{phase}_from_saved"
         else:
             filename = phase
-        np.save("{loc}{filename}.npy", embs_all)
-        np.save("{loc}{filename}.npy", eins)
+        np.save(f"{EMBEDDINGS_PATH}{filename}_embs.npy", embs_all)
+        np.save(f"{EMBEDDINGS_PATH}{filename}_eins.npy", eins_all)
 
     # Log to W&B and print output
     if logging_to_wandb:
@@ -508,7 +508,7 @@ def valid_epoch(
 @typechecked
 def create_embeddings(
     config: Mapping, save_emb: bool = False, verbose: bool = True,
-) -> Dict:
+) -> None:
     # if you are planning to use BERT as the input to another language model, you would not modify the outputs from BERT.
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8624482/
     random.seed(SEED)
@@ -563,10 +563,10 @@ def create_embeddings(
             classifier_dropout=config.classifier_dropout,
             verbose=verbose,
         )
-        if config.pretrained_model_path:
+        if config.saved_model_path:
             logging_to_wandb = False
             from_saved_model = True
-            model.load_state_dict(torch.load(config.pretrained_model_path))
+            model.load_state_dict(torch.load(config.saved_model_path))
         else:
             logging_to_wandb = False
             from_saved_model = False
@@ -584,13 +584,14 @@ def create_embeddings(
             batch_size=config.batch_size,
         )
 
-        tot_embs_dict = {}
         for dataloader, phase in [
             (dataloader["train"], "train"),
             (dataloader["test"], "test"),
             (dataloader["valid"], "val"),
             (dataloader["unlabeled"], "new"),
         ]:
+            if verbose:
+                print(f"Creating embeddings for {phase.upper()}.")
             # Validation
             valid_epoch(
                 model=model,
@@ -604,6 +605,4 @@ def create_embeddings(
                 logging_to_wandb=logging_to_wandb,
                 save_emb=save_emb,
             )
-
-        return tot_embs_dict
 

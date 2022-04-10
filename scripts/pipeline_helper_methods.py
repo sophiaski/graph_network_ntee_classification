@@ -576,33 +576,3 @@ BROAD_COMPLEX_SAVED = create_CONFIG(
     ntee=False, complex_graph=True, from_saved_model=True, saved_model_vers="04-09"
 )
 
-
-@typechecked
-def load_embs(
-    ntee: bool = False,
-    complex_graph: bool = False,
-    add_more_targets: bool = False,
-    from_saved_model: bool = False,
-) -> Dict:
-    loc = EMBEDDINGS_PATH
-    if ntee:
-        loc += "ntee"
-    else:
-        loc += "broad"
-    if complex_graph:
-        loc += "_complex"
-    else:
-        loc += "_simple"
-    if add_more_targets:
-        loc += "_w_added_targets"
-    loc += "/"
-
-    if from_saved_model:
-        filename = "_from_saved"
-    else:
-        filename = ""
-    embs_dict = {}
-    for phase in ["TRAIN", "VAL", "TEST", "NEW"]:
-        sub_dict = load_json(loc=loc, filename=f"{phase}{filename}")
-
-    return eins, embs
