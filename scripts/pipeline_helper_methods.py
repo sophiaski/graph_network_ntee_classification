@@ -6,8 +6,6 @@ from utils import *
 # Preparing data
 from sklearn import preprocessing
 
-# Splitting data
-from sklearn.model_selection import train_test_split
 
 # DataLoader
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -333,6 +331,7 @@ def get_dataloader(
     data_unlabeled: NGODataset,
     class_weights_train: Tensor,
     batch_size: int,
+    save_emb: bool = False,
 ) -> DataLoaderDict:
     """Convert the Dataset wrapping tensors into DataLoader objects to be fed into the model.
 
@@ -346,17 +345,20 @@ def get_dataloader(
     Returns:
         DataLoaderDict: Returns either train/val DataLoaders or the test DataLoader, which are iterables over the given dataset(s).
     """
-
-    # Sample the input based on the passed weights.
-    weighted_random_sampler = WeightedRandomSampler(
-        weights=class_weights_train, num_samples=len(class_weights_train)
-    )
-    dataloader_train = DataLoader(
-        dataset=data_train,
-        sampler=weighted_random_sampler,
-        batch_size=batch_size,
-        num_workers=4,
-    )
+    if save_emb:
+        # Sequential sampling for validation
+        dataloader_train = DataLoader(dataset=data_train, shuffle=False, batch_size=64,)
+    else:
+        # Sample the input based on the passed weights.
+        weighted_random_sampler = WeightedRandomSampler(
+            weights=class_weights_train, num_samples=len(class_weights_train)
+        )
+        dataloader_train = DataLoader(
+            dataset=data_train,
+            sampler=weighted_random_sampler,
+            batch_size=batch_size,
+            num_workers=4,
+        )
     # Sequential sampling for validation
     dataloader_validation = DataLoader(
         dataset=data_validation, shuffle=False, batch_size=64,
@@ -510,7 +512,7 @@ def create_CONFIG(
 ) -> Dict:
     ALL_CONFIG = {
         "optimizer": "adam",
-        "epochs": 3,
+        "epochs": 5,
         "batch_size": 32,
         "max_length": 128,
         "clip_grad": False,
@@ -534,7 +536,7 @@ def create_CONFIG(
             "cat_type": "broad",
             "learning_rate": 5e-05,
             "classifier_dropout": 0.3,
-            "perc_warmup_steps": 0.1,
+            "perc_warmup_steps": 0.2,
         }
     Merge(ALL_CONFIG, CATEGORY_CONFIG)
 
@@ -564,10 +566,10 @@ NTEE_COMPLEX = create_CONFIG(ntee=True, complex_graph=True)
 BROAD_SIMPLE = create_CONFIG(ntee=False, complex_graph=False)
 BROAD_COMPLEX = create_CONFIG(ntee=False, complex_graph=True)
 NTEE_SIMPLE_SAVED = create_CONFIG(
-    ntee=True, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"
+    ntee=True, complex_graph=False, from_saved_model=True, saved_model_vers="04-10"
 )
 NTEE_COMPLEX_SAVED = create_CONFIG(
-    ntee=True, complex_graph=True, from_saved_model=True, saved_model_vers="04-09"
+    ntee=True, complex_graph=True, from_saved_model=True, saved_model_vers="04-10"
 )
 BROAD_SIMPLE_SAVED = create_CONFIG(
     ntee=False, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"

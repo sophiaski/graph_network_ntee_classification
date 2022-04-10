@@ -10,6 +10,7 @@ import torch_geometric.transforms as T
 
 
 def stage_graph(
+    device: torch.device,
     ntee: bool = False,
     complex_graph: bool = False,
     add_more_targets: bool = False,
@@ -31,9 +32,12 @@ def stage_graph(
     eins, embs = load_embs(
         ntee=ntee,
         complex_graph=complex_graph,
-        add_more_targets=add_more_targets,
+        # add_more_targets=add_more_targets,
         from_saved_model=from_saved_model,
     )
+
+    print(f"Size of eins: {eins.shape}")
+    print(f"Size of embeddings (before transformed): {embs.shape}")
 
     assert len(nodes) == len(eins)
     assert len(nodes) == len(embs)
@@ -55,20 +59,53 @@ def stage_graph(
         "region": "region",
     }
     nodes.loc[:, "node_type"] = nodes["node_type"].map(generalizing_node_type)
-
+    del generalizing_node_type
     # ID 2 EIN mapper
     nodes.loc[:, "node_id"] = nodes.index.astype(int)
     ein2id = nodes.set_index("ein")["node_id"].to_dict()
 
     # Create node feature vector
+    missing = nodes[~nodes["ein"].isin(eins)]["ein"].values
+    print(f"Are there any EINs missing from the embeddings? {len(missing)}")
     ein2emb = dict(zip(eins, embs))
     id2emb = {ein2id[k]: v for k, v in ein2emb.items()}
+
+    # # Filter the IDS down to the ones not getting removed
+    # remove = (
+    #     nodes[(nodes["benchmark_status"] == "new") & (nodes["node_type"] != "region")]
+    #     .copy()["node_id"]
+    #     .values
+    # )
+    # id2emb = {k: v for k, v in id2emb.items() if k not in remove}
+
+    # nodes = (
+    #     nodes[(nodes["benchmark_status"] != "new") | (nodes["node_type"] == "region")]
+    #     .copy()
+    #     .reset_index(drop=True)
+    # )
+
+    # ids = torch.tensor(
+    #     [
+    #         torch.tensor(x[0]).item()
+    #         for x in sorted(id2emb.items(), key=lambda x: int(x[0]))
+    #     ],
+    #     dtype=torch.long,
+    # )
     x = torch.cat(
         [
             torch.tensor(x[1]).unsqueeze(0)
             for x in sorted(id2emb.items(), key=lambda x: int(x[0]))
         ]
-    )
+    ).to(device)
+
+    from torch.nn.functional import softmax, normalize
+
+    x = normalize(x)
+
+    del missing, ein2emb, id2emb
+    # x = torch.rand((len(nodes), embs.shape[1]))
+    # x[ids] = embs_parsed
+    # print(f"Size of embeddings (after transformed): {x.shape}")
 
     # Encode groups as numeric target value
     nodes.loc[:, f"{target}_y"] = preprocessing.LabelEncoder().fit_transform(
@@ -77,68 +114,81 @@ def stage_graph(
     # Make unlabeled value == -1
     nodes.loc[nodes[f"{target}_y"] == nodes[f"{target}_y"].max(), f"{target}_y"] = -1
 
-    y = torch.from_numpy(nodes[f"{target}_y"].values, float=torch.long)
+    y = torch.from_numpy(nodes[f"{target}_y"].values)
 
     #########
     # Edges #
     #########
 
+    # Remove any edges not contained in original dataset
+
     # For this project, we are not using any additional edge information
     # Create edge weights by dollar amount
-    edges.loc[:, "cash_grant_minmax"] = preprocessing.MinMaxScaler(
-        feature_range=(0.5, 1)
-    ).fit_transform(edges[["cash_grant_amt"]].fillna("0").astype(int))
-    # Create edge weights by dollar amount
-    edges.loc[:, "tax_period_minmax"] = preprocessing.MinMaxScaler(
-        feature_range=(0.5, 1)
-    ).fit_transform(edges[["tax_period"]].fillna("2010").astype(int))
+    # edges.loc[:, "cash_grant_minmax"] = preprocessing.MinMaxScaler(
+    #     feature_range=(0.5, 1)
+    # ).fit_transform(edges[["cash_grant_amt"]].fillna("0").astype(int))
+    # # Create edge weights by dollar amount
+    # edges.loc[:, "tax_period_minmax"] = preprocessing.MinMaxScaler(
+    #     feature_range=(0.5, 1)
+    # ).fit_transform(edges[["tax_period"]].fillna("2010").astype(int))
 
     # ID 2 Node Id
     edges.loc[:, "src_id"] = edges["src"].map(ein2id)
     edges.loc[:, "dst_id"] = edges["dst"].map(ein2id)
+    # edges = (
+    #     edges[(~edges["src_id"].isin(remove)) & (~edges["dst_id"].isin(remove))]
+    #     .copy()
+    #     .reset_index(drop=True)
+    # )
+
+    # # ID 2 EIN mapper
+    # nodes.loc[:, "node_id"] = nodes.index.astype(int)
+    # new_ein2id = nodes.set_index("ein")["node_id"].to_dict()
+    # edges.loc[:, "src_id"] = edges["src"].map(new_ein2id)
+    # edges.loc[:, "dst_id"] = edges["dst"].map(new_ein2id)
+    # del ein2id, new_ein2id
 
     # Need to create different node types
     node_type_mapper = nodes["node_type"].to_dict()
-    edges.loc[:, "src_node_type"] = (
-        edges["src_id"].map(node_type_mapper)
-    )
-    edges.loc[:, "dst_node_type"] = (
-        edges["dst_id"].map(node_type_mapper)
+    edges.loc[:, "src_node_type"] = edges["src_id"].map(node_type_mapper)
+    edges.loc[:, "dst_node_type"] = edges["dst_id"].map(node_type_mapper)
+    del node_type_mapper
 
     edge_index = torch.tensor(
         [edges["src_id"].tolist(), edges["dst_id"].tolist()], dtype=torch.long
-    )
-    edge_attr = torch.from_numpy(
-        edges[["cash_grant_minmax", "tax_period_minmax"]].values
-    )
+    ).to(device)
+
+    # edge_attr = torch.from_numpy(
+    #     edges[["cash_grant_minmax", "tax_period_minmax"]].values
+    # ).to(device)
 
     # Spltting out train+val from test
     nodes_trainval = torch.from_numpy(
-        nodes[nodes["benchmark_status" == "train"]]["node_id"].values, dtype=torch.long
+        nodes[nodes["benchmark_status"] == "train"]["node_id"].values
     )
     nodes_test = torch.from_numpy(
-        nodes[nodes["benchmark_status" == "test"]]["node_id"].values, dtype=torch.long
+        nodes[nodes["benchmark_status"] == "test"]["node_id"].values
     )
-    target_trainval = torch.from_numpy(
-        nodes[nodes["benchmark_status" == "train"]][f"{target}_y"].values,
-        dtype=torch.long,
-    )
+    # target_trainval = torch.from_numpy(
+    #     nodes[nodes["benchmark_status"] == "train"][f"{target}_y"].values,
+    # )
 
     nodes_train, nodes_valid = train_test_split(
-        nodes_trainval, test_size=0.2, stratify=target_trainval, random_state=seed,
+        nodes_trainval, test_size=0.2, random_state=seed,
     )
 
     # Create train, validation, and test masks for data
-    train_mask = torch.zeros(len(x.shape[0]), dtype=torch.bool)
-    valid_mask = torch.zeros(len(x.shape[0]), dtype=torch.bool)
-    test_mask = torch.zeros(len(x.shape[0]), dtype=torch.bool)
+    train_mask = torch.zeros(len(nodes), dtype=torch.bool).to(device)
+    valid_mask = torch.zeros(len(nodes), dtype=torch.bool).to(device)
+    test_mask = torch.zeros(len(nodes), dtype=torch.bool).to(device)
+
     train_mask[nodes_train] = True
     valid_mask[nodes_valid] = True
     test_mask[nodes_test] = True
 
     if hetero_graph:
 
-        data = HeteroData()
+        data = HeteroData().to(device)
 
         ##################
         # Add node types #
@@ -147,31 +197,33 @@ def stage_graph(
         data["organization"].x = x[
             torch.from_numpy(
                 nodes[nodes["node_type"] == "organization"]["node_id"].values
-            )
+            ).to(device)
         ]  # [num_grantors, num_features_grantors]
 
         # Train mask
         data["organization"].train_mask = train_mask[
             torch.from_numpy(
                 nodes[nodes["node_type"] == "organization"]["node_id"].values
-            )
+            ).to(device)
         ]
 
         # Valid mask
         data["organization"].valid_mask = valid_mask[
             torch.from_numpy(
                 nodes[nodes["node_type"] == "organization"]["node_id"].values
-            )
+            ).to(device)
         ]
         # Test mask
         data["organization"].test_mask = test_mask[
             torch.from_numpy(
                 nodes[nodes["node_type"] == "organization"]["node_id"].values
-            )
+            ).to(device)
         ]
 
         data["region"].x = x[
-            torch.from_numpy(nodes[nodes["node_type"] == "region"]["node_id"].values)
+            torch.from_numpy(
+                nodes[nodes["node_type"] == "region"]["node_id"].values
+            ).to(device)
         ]  # [num_regions, num_features_regions]
 
         ####################
@@ -180,53 +232,77 @@ def stage_graph(
 
         data["organization", "donates_to", "organization"].edge_index = edge_index[
             :,
-            edges[
-                (edges["src_node_type"] == "organization")
-                & (edges["dst_node_type"] == "organization")
-            ].index.values,
+            torch.from_numpy(
+                edges[
+                    (edges["src_node_type"] == "organization")
+                    & (edges["dst_node_type"] == "organization")
+                ].index.values
+            ).to(device),
         ]  # [2, num_edges_bothboth]
 
         data["organization", "operates_in", "region"].edge_index = edge_index[
             :,
-            edges[
-                (edges["src_node_type"] == "organization")
-                & (edges["dst_node_type"] == "region")
-            ].index.values,
+            torch.from_numpy(
+                edges[
+                    (edges["src_node_type"] == "organization")
+                    & (edges["dst_node_type"] == "region")
+                ].index.values
+            ).to(device),
         ]  # [2, num_edges_operates]
 
         #####################
         # Add edge features #
         #####################
 
-        data["organization", "donates_to", "organization"].edge_attr = edge_attr[
-            :,
-            edges[
-                (edges["src_node_type"] == "organization")
-                & (edges["dst_node_type"] == "organization")
-            ].index.values,
-        ]  # [num_edges_donates, num_features_donates]
+        # data["organization", "donates_to", "organization"].edge_attr = edge_attr[
+        #     :,
+        #     torch.from_numpy(
+        #         edges[
+        #             (edges["src_node_type"] == "organization")
+        #             & (edges["dst_node_type"] == "organization")
+        #         ].index.values
+        #     ).to(device),
+        # ]  # [num_edges_donates, num_features_donates]
 
-        data["organization", "operates_in", "region"].edge_attr = edge_attr[
-            :,
-            edges[
-                (edges["src_node_type"] == "organization")
-                & (edges["dst_node_type"] == "region")
-            ].index.values,
-        ]  # [num_edges_org_operates, num_features_operates]
+        # data["organization", "operates_in", "region"].edge_attr = edge_attr[
+        #     :,
+        #     torch.from_numpy(
+        #         edges[
+        #             (edges["src_node_type"] == "organization")
+        #             & (edges["dst_node_type"] == "region")
+        #         ].index.values
+        #     ).to(device),
+        # ]  # [num_edges_org_operates, num_features_operates]
+
+        data = T.ToUndirected()(data)
+        data = T.AddSelfLoops()(data)
+        # data = T.NormalizeFeatures()(data)
 
     else:
 
-        data = Data(x=x, edge_attr=edge_attr, edge_index=edge_index, y=y)
+        data = Data().to(device)
+        data.x = x
+        # data.edge_attr = edge_attr
+        data.edge_index = edge_index
+        data.y = y
         data.train_mask = train_mask
         data.test_mask = test_mask
         data.valid_mask = valid_mask
         # num_features = x.shape[1]
         # num_classes = y.max().item()
 
-    data = T.ToUndirected()(data)
-    data = T.AddSelfLoops()(data)
-    data = T.NormalizeFeatures()(data)
-    
+        data = T.ToUndirected()(data)
+        data = T.AddSelfLoops()(data)
+        edge_attr = torch.ones(len(data.edge_index[0]), 2) * 0.5
+        edge_attr[: data.edge_attr.shape[0], : data.edge_attr.shape[1]] = data.edge_attr
+        data["edge_attr"] = edge_attr
+        # edge_attr_data = torch.from_numpy(
+        #     edges[["cash_grant_minmax", "tax_period_minmax"]].values
+        # )
+
+        # edge_attr[: edge_attr_data.shape[0], : edge_attr_data.shape[1]] = edge_attr_data
+        # data = T.NormalizeFeatures()(data)
+
     return data
 
 

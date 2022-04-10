@@ -472,7 +472,7 @@ def load_graph_dfs(
 def load_embs(
     ntee: bool = False,
     complex_graph: bool = False,
-    add_more_targets: bool = False,
+    # add_more_targets: bool = False,
     from_saved_model: bool = False,
 ) -> Tuple[np.array, torch.tensor]:
     loc = EMBEDDINGS_PATH
@@ -484,8 +484,8 @@ def load_embs(
         loc += "_complex"
     else:
         loc += "_simple"
-    if add_more_targets:
-        loc += "_w_added_targets"
+    # if add_more_targets:
+    #     loc += "_w_added_targets"
     loc += "/"
 
     if from_saved_model:

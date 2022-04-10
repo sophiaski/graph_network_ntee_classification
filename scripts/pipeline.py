@@ -14,8 +14,9 @@ def train_broad():
     ✓ Stratification in train/val/test split
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
+    print(BROAD_COMPLEX)
     return train(
-        config=BROAD_SIMPLE,
+        config=BROAD_COMPLEX,
         cat_type="broad",
         strat_type="sklearn",
         sampler="weighted_norm",
@@ -155,6 +156,7 @@ def train(
             data_unlabeled=data[f"stratify_{strat_type}"]["dataset_unlabeled"],
             class_weights_train=data[f"stratify_{strat_type}"]["class_weights_train"],
             batch_size=config.batch_size,
+            save_emb=False,
         )
 
         # Optimizer
@@ -582,6 +584,7 @@ def create_embeddings(
                 "class_weights_train"
             ],
             batch_size=config.batch_size,
+            save_emb=save_emb,
         )
 
         for dataloader, phase in [
