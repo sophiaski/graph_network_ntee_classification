@@ -348,12 +348,19 @@ def valid_epoch(
     # Initialize metrics
     accuracy_by_label = Accuracy(num_classes=num_labels, average="none")
     accuracy_weighted = Accuracy(num_classes=num_labels, average="weighted")
+    accuracy_macro = Accuracy(num_classes=num_labels, average="macro")
 
     # Precision: What proportion of predicted positives are truly positive?
+    precision_weighted = Precision(num_classes=num_labels, average="weighted")
+    precision_macro = Precision(num_classes=num_labels, average="macro")
     # Recall: what proportion of actual positives are correctly classified?
+    recall_weighted = Recall(num_classes=num_labels, average="weighted")
+    recall_macro = Recall(num_classes=num_labels, average="macro")
+
     # F1Score: harmonic mean of precision and recall
     f1score_by_label = F1Score(num_classes=num_labels, average="none")
     f1score_weighted = F1Score(num_classes=num_labels, average="weighted")
+    f1score_macro = F1Score(num_classes=num_labels, average="macro")
 
     # Progress bar that iterates over validation dataloader
     for batch in progress_bar:
@@ -398,6 +405,14 @@ def valid_epoch(
         f1_by_label = f1score_by_label(preds, true_labels)
         # auroc = auroc_weighted(preds, true_labels)
 
+        # New
+        acc_macro = accuracy_macro(preds, true_labels)
+        prec_macro = precision_macro(preds, true_labels)
+        rec_macro = recall_macro(preds, true_labels)
+        prec = precision_weighted(preds, true_labels)
+        rec = recall_weighted(preds, true_labels)
+        f1_macro = f1score_macro(preds, true_labels)
+
         # Log to W&B and print output
         if logging_to_wandb:
             if log_cnt % 10 == 0:
@@ -422,6 +437,14 @@ def valid_epoch(
     f1 = f1score_weighted.compute()
     f1_by_label = f1score_by_label.compute()
 
+    # New
+    acc_macro = accuracy_macro.compute()
+    prec_macro = precision_macro.compute()
+    rec_macro = recall_macro.compute()
+    prec = precision_weighted.compute()
+    rec = recall_weighted.compute()
+    f1_macro = f1score_macro.compute()
+
     # Save embeddings to numpy
     if save_emb:
         print(f"Saving BERT Output Embeddings: {embs_all.shape}")
@@ -438,43 +461,54 @@ def valid_epoch(
         epoch_scores = {
             f"{phase}_loss": loss_avg,
             f"{phase}_acc": acc,
+            f"{phase}_prec": prec,
+            f"{phase}_rec": rec,
+            f"{phase}_acc_macro": acc_macro,
+            f"{phase}_prec_macro": prec_macro,
+            f"{phase}_rec_macro": rec_macro,
             f"{phase}_f1": f1,
+            f"{phase}_f1_macro": f1_macro,
         }
         epoch_scores.update(
             {f"{phase}_acc_{idx}": val.item() for idx, val in enumerate(acc_by_label)}
         )
         epoch_scores.update(
-            {f"{phase}_val_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
+            {f"{phase}_f1_{idx}": val.item() for idx, val in enumerate(f1_by_label)}
         )
         wandb.log(epoch_scores)
         log_cnt += 1
 
-        # Randomly sample 10K datapoints (WandB limit)
-        sampling_indices_by_lab = {}
-        min_idx = round(9999 / num_labels)
+        if phase in ["train", "new"]:
+            # Randomly sample 10K datapoints (WandB limit)
+            sampling_indices_by_lab = {}
+            min_idx = round(9999 / num_labels)
 
-        # First grab indices for each label class in the true_labels_all tensor
-        for lab in np.arange(num_labels):
-            indices = (true_labels_all == lab).nonzero(as_tuple=True)[0]
-            if len(indices) < min_idx:
-                min_idx = len(indices)
-            sampling_indices_by_lab[lab] = indices
+            # First grab indices for each label class in the true_labels_all tensor
+            for lab in np.arange(num_labels):
+                indices = (true_labels_all == lab).nonzero(as_tuple=True)[0]
+                if len(indices) < min_idx:
+                    min_idx = len(indices)
+                sampling_indices_by_lab[lab] = indices
 
-        # Then sample evenly across
-        samps = []
-        for lab in np.arange(num_labels):
-            samps.append(
-                torch.tensor(
-                    np.random.choice(
-                        sampling_indices_by_lab[lab], size=min_idx, replace=False
+            # Then sample evenly across
+            samps = []
+            for lab in np.arange(num_labels):
+                samps.append(
+                    torch.tensor(
+                        np.random.choice(
+                            sampling_indices_by_lab[lab], size=min_idx, replace=False
+                        )
                     )
                 )
-            )
-        # Combine to apply to the true labels / pred labels tensors
-        balanced_samples = torch.cat(samps, dim=0)
-        true_labels_all_samp = true_labels_all[balanced_samples]
-        preds_all_samp = preds_all[balanced_samples]
-        preds_labels_all_samp = preds_labels_all[balanced_samples]
+            # Combine to apply to the true labels / pred labels tensors
+            balanced_samples = torch.cat(samps, dim=0)
+            true_labels_all_samp = true_labels_all[balanced_samples]
+            preds_all_samp = preds_all[balanced_samples]
+            preds_labels_all_samp = preds_labels_all[balanced_samples]
+        else:
+            true_labels_all_samp = true_labels_all
+            preds_all_samp = preds_all
+            preds_labels_all_samp = preds_labels_all
         # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
         wandb.log(
             {
