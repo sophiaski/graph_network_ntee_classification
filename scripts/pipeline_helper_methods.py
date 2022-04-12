@@ -19,18 +19,16 @@ import torch.optim as optim
 # Scheduler
 from transformers import get_linear_schedule_with_warmup
 
-# SoftMax, Normalize
-from torch.nn.functional import softmax, normalize
+# SoftMax
+from torch.nn.functional import normalize
+
+# Creating training class weights
 from sklearn.utils import class_weight
 
-# Metrics
-from torchmetrics import Accuracy, F1Score, Precision, Recall
-
 # PyTorch Datasets
-
 from dataset import NGODataset
 
-# Nodes
+# Loading in the data
 from graph_process import load_nodes
 
 
@@ -84,9 +82,6 @@ def build_data(
         verbose=verbose,
     )
 
-    if verbose:
-        print("Processing data is done. Now onto the model!")
-
     return experiment_dict
 
 
@@ -115,7 +110,7 @@ def encode_targets(
         unlabeled_group = "Z"
         group2name = NTEE_NAME
 
-    # For unlabeled nodes, encode groups as -1
+    # For unlabeled nodes, encode groups as 0, they will be used in training or testing
     unlabeled = data[data[col_name] == unlabeled_group].copy()
     unlabeled.loc[:, f"{col_name}_target"] = 0
     if verbose:
@@ -346,8 +341,10 @@ def get_dataloader(
     Returns:
         DataLoaderDict: Returns either train/val DataLoaders or the test DataLoader, which are iterables over the given dataset(s).
     """
-    if save_emb:
-        # Sequential sampling for validation
+    if (
+        save_emb
+    ):  # If not fine-tuning BERT, use sequential sampler during training to output CLS tokens
+        # Sequential sampling for testing
         dataloader_train = DataLoader(dataset=data_train, shuffle=False, batch_size=64,)
     else:
         # Sample the input based on the passed weights.
@@ -405,7 +402,7 @@ def load_model(
         num_labels=num_labels,
         classifier_dropout=classifier_dropout,
         output_attentions=False,
-        output_hidden_states=True,
+        output_hidden_states=True,  # For extracting final BERT layer
     )
     # Summarize model
     if verbose:
@@ -560,22 +557,3 @@ def create_CONFIG(
     else:
         ALL_CONFIG["saved_model_path"] = None
     return ALL_CONFIG
-
-
-NTEE_SIMPLE = create_CONFIG(ntee=True, complex_graph=False)
-NTEE_COMPLEX = create_CONFIG(ntee=True, complex_graph=True)
-BROAD_SIMPLE = create_CONFIG(ntee=False, complex_graph=False)
-BROAD_COMPLEX = create_CONFIG(ntee=False, complex_graph=True)
-NTEE_SIMPLE_SAVED = create_CONFIG(
-    ntee=True, complex_graph=False, from_saved_model=True, saved_model_vers="04-10"
-)
-NTEE_COMPLEX_SAVED = create_CONFIG(
-    ntee=True, complex_graph=True, from_saved_model=True, saved_model_vers="04-10"
-)
-BROAD_SIMPLE_SAVED = create_CONFIG(
-    ntee=False, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"
-)
-BROAD_COMPLEX_SAVED = create_CONFIG(
-    ntee=False, complex_graph=True, from_saved_model=True, saved_model_vers="04-10"
-)
-

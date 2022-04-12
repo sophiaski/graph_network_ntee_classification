@@ -474,11 +474,15 @@ def load_embs(
     complex_graph: bool = False,
     # add_more_targets: bool = False,
     from_saved_model: bool = False,
-) -> Tuple[np.array, torch.tensor]:
+    use_bow: bool = False,
+) -> Union[torch.tensor, Tuple[np.array, torch.tensor]]:
     loc = EMBEDDINGS_PATH
-    if ntee:
+    if use_bow:
+        loc += "bow"
+
+    if ntee and not use_bow:
         loc += "ntee"
-    else:
+    elif not ntee and not use_bow:
         loc += "broad"
     if complex_graph:
         loc += "_complex"
@@ -486,18 +490,25 @@ def load_embs(
         loc += "_simple"
     # if add_more_targets:
     #     loc += "_w_added_targets"
-    loc += "/"
+    if not use_bow:
+        loc += "/"
 
     if from_saved_model:
         filename = "_from_saved"
     else:
         filename = ""
-    eins_all, embs_all = np.array([]), []
-    for phase in ["train", "val", "test", "new"]:
-        eins_all = np.append(eins_all, np.load(f"{loc}{phase}{filename}_eins.npy"))
-        embs_all.append(torch.from_numpy(np.load(f"{loc}{phase}{filename}_embs.npy")))
-    embs_all = torch.cat(embs_all, dim=0)
-    return eins_all, embs_all
+    # Load embeddings as numpy arrays, then convert to torch tensors
+    if use_bow:
+        return torch.from_numpy(np.load(f"{loc}{filename}.npy"))
+    else:
+        eins_all, embs_all = np.array([]), []
+        for phase in ["train", "val", "test", "new"]:
+            eins_all = np.append(eins_all, np.load(f"{loc}{phase}{filename}_eins.npy"))
+            embs_all.append(
+                torch.from_numpy(np.load(f"{loc}{phase}{filename}_embs.npy"))
+            )
+        embs_all = torch.cat(embs_all, dim=0)
+        return eins_all, embs_all
 
 
 def main():

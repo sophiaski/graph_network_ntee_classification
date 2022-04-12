@@ -3,8 +3,41 @@
 # 🄱🄴🅁🅃 🄵🄾🅁 🅂🄴🅀🅄🄴🄽🄲🄴 🄲🄻🄰🅂🅂🄸🄵🄸🄲🄰🅃🄸🄾🄽
 
 # Helper methods to clear up the script
-from numpy import complex_
 from pipeline_helper_methods import *
+
+# Metrics
+from torchmetrics import Accuracy, F1Score, Precision, Recall
+from torch.nn.functional import softmax
+
+# BOW Embeddings
+from sklearn.feature_extraction.text import CountVectorizer
+
+# WandB
+import wandb
+
+# BERT model specs -- NO FINE-TUNING
+# Major group
+NTEE_SIMPLE = create_CONFIG(ntee=True, complex_graph=False)
+NTEE_COMPLEX = create_CONFIG(ntee=True, complex_graph=True)
+# Broad category
+BROAD_SIMPLE = create_CONFIG(ntee=False, complex_graph=False)
+BROAD_COMPLEX = create_CONFIG(ntee=False, complex_graph=True)
+
+# BERT model specs -- FINE TUNED
+# Major group
+NTEE_SIMPLE_SAVED = create_CONFIG(
+    ntee=True, complex_graph=False, from_saved_model=True, saved_model_vers="04-10"
+)
+NTEE_COMPLEX_SAVED = create_CONFIG(
+    ntee=True, complex_graph=True, from_saved_model=True, saved_model_vers="04-10"
+)
+# Broad category
+BROAD_SIMPLE_SAVED = create_CONFIG(
+    ntee=False, complex_graph=False, from_saved_model=True, saved_model_vers="04-09"
+)
+BROAD_COMPLEX_SAVED = create_CONFIG(
+    ntee=False, complex_graph=True, from_saved_model=True, saved_model_vers="04-10"
+)
 
 
 def train_broad():
@@ -31,6 +64,7 @@ def train_ntee():
     ✓ Stratification in train/val/test split
     ✓ Normalizing the training class weights for weighted random sampling in the data loader
     """
+    print(NTEE_SIMPLE)
     return train(
         config=NTEE_SIMPLE,
         cat_type="ntee",
@@ -38,38 +72,6 @@ def train_ntee():
         sampler="weighted_norm",
         save_model=True,
     )
-
-
-# def train_broad_weighted():
-#     """
-#     Experiment using
-#     ✓ Broad category targets for classification.
-#     ✓ Stratification in train/val/test split
-#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
-#     """
-#     return train(
-#         config=SWEEP_INIT,
-#         cat_type="broad",
-#         strat_type="sklearn",
-#         sampler="norm",
-#         save_model=True,
-#     )
-
-
-# def train_ntee_weighted():
-#     """
-#     Experiment using
-#     ✓ NTEE1 category targets for classification.
-#     ✓ Stratification in train/val/test split
-#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
-#     """
-#     return train(
-#         config=SWEEP_INIT,
-#         cat_type="ntee",
-#         strat_type="sklearn",
-#         sampler="norm",
-#         save_model=False,
-#     )
 
 
 # ██████╗░██╗██████╗░███████╗██╗░░░░░██╗███╗░░██╗███████╗
@@ -246,10 +248,9 @@ def train_epoch(
     device: torch.device,
 ) -> float:
 
-    # Update state to train
+    # Update state to train, being accumulator for loss and counter for tracking # of WandB logs
     model.train()
-    cumu_loss = 0.0
-    log_cnt = 0
+    cumu_loss, log_cnt = 0.0, 0
 
     # Set up progress bar
     progress_bar = tqdm(
@@ -399,30 +400,39 @@ def valid_epoch(
         # Calculate metrics on current batch
         preds = softmax(outputs[1].detach().cpu(), dim=-1)
         true_labels = inputs["labels"].cpu()
-        acc = accuracy_weighted(preds, true_labels)
-        acc_by_label = accuracy_by_label(preds, true_labels)
-        f1 = f1score_weighted(preds, true_labels)
-        f1_by_label = f1score_by_label(preds, true_labels)
+
         # auroc = auroc_weighted(preds, true_labels)
 
-        # New
+        # Accuracy
+        acc = accuracy_weighted(preds, true_labels)
+        acc_by_label = accuracy_by_label(preds, true_labels)
         acc_macro = accuracy_macro(preds, true_labels)
-        prec_macro = precision_macro(preds, true_labels)
-        rec_macro = recall_macro(preds, true_labels)
-        prec = precision_weighted(preds, true_labels)
-        rec = recall_weighted(preds, true_labels)
+
+        # F1 Score
+        f1 = f1score_weighted(preds, true_labels)
+        f1_by_label = f1score_by_label(preds, true_labels)
         f1_macro = f1score_macro(preds, true_labels)
+
+        # Precision
+        prec = precision_weighted(preds, true_labels)
+        prec_macro = precision_macro(preds, true_labels)
+
+        # Recall
+        rec = recall_weighted(preds, true_labels)
+        rec_macro = recall_macro(preds, true_labels)
 
         # Log to W&B and print output
         if logging_to_wandb:
             if log_cnt % 10 == 0:
                 wandb.log({f"{phase}_loss_batch": loss_avg_batch_valid})
-            log_cnt += 1
+                log_cnt += 1
         progress_bar.set_postfix({f"{phase}_loss_batch": f"{loss_avg_batch_valid:.3f}"})
+
+        # Collect predictions each batch
         preds_all.append(preds)
         true_labels_all.append(true_labels)
 
-    # Calculate average loss for entire validation dataset.
+    # Calculate average loss for entire dataset
     loss_avg = cumu_loss / len(dataloader)
 
     # Convert lists to tensors
@@ -432,42 +442,49 @@ def valid_epoch(
     embs_all = torch.cat(embs_all, dim=0).numpy()
 
     # Calculate metrics on all batches using custom accumulation.
+    # Accuracy
     acc = accuracy_weighted.compute()
     acc_by_label = accuracy_by_label.compute()
+    acc_macro = accuracy_macro.compute()
+
+    # F1 score
     f1 = f1score_weighted.compute()
     f1_by_label = f1score_by_label.compute()
-
-    # New
-    acc_macro = accuracy_macro.compute()
-    prec_macro = precision_macro.compute()
-    rec_macro = recall_macro.compute()
-    prec = precision_weighted.compute()
-    rec = recall_weighted.compute()
     f1_macro = f1score_macro.compute()
 
-    # Save embeddings to numpy
+    # Precision
+    prec = precision_weighted.compute()
+    prec_macro = precision_macro.compute()
+
+    # Recall
+    rec = recall_weighted.compute()
+    rec_macro = recall_macro.compute()
+
+    # Save CLS token embeddings to numpy to merge with graph data later
     if save_emb:
-        print(f"Saving BERT Output Embeddings: {embs_all.shape}")
-        print(f"Number of EINS: {len(eins_all)}")
         if from_saved_model:
             filename = f"{phase}_from_saved"
         else:
             filename = phase
-        np.save(f"{EMBEDDINGS_PATH}{filename}_embs.npy", embs_all)
-        np.save(f"{EMBEDDINGS_PATH}{filename}_eins.npy", eins_all)
+        save_embeddings(
+            eins_all, loc=EMBEDDINGS_PATH, filename=f"{filename}_eins", verbose=True
+        )
+        save_embeddings(
+            embs_all, loc=EMBEDDINGS_PATH, filename=f"{filename}_embs", verbose=True
+        )
 
-    # Log to W&B and print output
+    # Log all metrics WandB
     if logging_to_wandb:
         epoch_scores = {
             f"{phase}_loss": loss_avg,
             f"{phase}_acc": acc,
-            f"{phase}_prec": prec,
-            f"{phase}_rec": rec,
             f"{phase}_acc_macro": acc_macro,
-            f"{phase}_prec_macro": prec_macro,
-            f"{phase}_rec_macro": rec_macro,
             f"{phase}_f1": f1,
             f"{phase}_f1_macro": f1_macro,
+            f"{phase}_prec": prec,
+            f"{phase}_prec_macro": prec_macro,
+            f"{phase}_rec": rec,
+            f"{phase}_rec_macro": rec_macro,
         }
         epoch_scores.update(
             {f"{phase}_acc_{idx}": val.item() for idx, val in enumerate(acc_by_label)}
@@ -478,7 +495,9 @@ def valid_epoch(
         wandb.log(epoch_scores)
         log_cnt += 1
 
+        # Gather datapoints for plot
         if phase in ["train", "new"]:
+
             # Randomly sample 10K datapoints (WandB limit)
             sampling_indices_by_lab = {}
             min_idx = round(9999 / num_labels)
@@ -506,9 +525,11 @@ def valid_epoch(
             preds_all_samp = preds_all[balanced_samples]
             preds_labels_all_samp = preds_labels_all[balanced_samples]
         else:
+            # Use all data points
             true_labels_all_samp = true_labels_all
             preds_all_samp = preds_all
             preds_labels_all_samp = preds_labels_all
+
         # Log PR curve, ROC curve, confusion matrix, all of the scores from this epoch
         wandb.log(
             {
@@ -527,6 +548,7 @@ def valid_epoch(
         )
         log_cnt += 1
         print(f"Number of WandB logs for this epoch: {log_cnt}")
+
     # For progress display
     tqdm.write(f"{phase}_loss: {loss_avg}")
 
@@ -542,10 +564,19 @@ def valid_epoch(
 
 
 @typechecked
+def save_embeddings(
+    data: np.array, loc: str, filename: str, verbose: bool = True
+) -> None:
+    if verbose:
+        print(f"Saving {filename.upper()} embeddings w/ size {data.shape}")
+    np.save(f"{loc}{filename}.npy", data)
+
+
+@typechecked
 def create_embeddings(
     config: Mapping, save_emb: bool = False, verbose: bool = True,
 ) -> None:
-    # if you are planning to use BERT as the input to another language model, you would not modify the outputs from BERT.
+    # If you are planning to use BERT as the input to another language model, you would not modify the outputs from BERT.
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8624482/
     random.seed(SEED)
     np.random.seed(SEED)
@@ -643,3 +674,78 @@ def create_embeddings(
                 save_emb=save_emb,
             )
 
+
+@typechecked
+def create_bow_embs(
+    max_features: int, save_emb: bool = False, verbose: bool = True,
+) -> List[pd.DataFrame]:
+    embs_df = []
+    for complex_graph in [True, False]:
+        # Load data
+        nodes = load_nodes(
+            complex_graph=complex_graph,
+            add_more_targets=False,
+            frac=1.0,
+            seed=SEED,
+            verbose=verbose,
+        ).fillna("")
+
+        # Pre-process sequence text to remove random NaN strings, digits, and punctuation
+        if verbose:
+            print("\tPre-process sequence data: remove NAs, digits, punctuation.")
+        nodes.loc[:, "sequence"] = (
+            nodes.sequence.str.replace("<NA>|NaN", "")
+            .str.replace("\d+", "")
+            .str.replace(r"[^\w\s]+", "")
+        )
+        if verbose:
+            print("\tApplying CountVectorizer to stripped sequence data.")
+        vectorizer = CountVectorizer(max_features=max_features, stop_words="english")
+        X = vectorizer.fit_transform(nodes.sequence)
+        df_bow_sklearn = pd.DataFrame(
+            X.toarray(), columns=vectorizer.get_feature_names()
+        )
+        embs_df.append(df_bow_sklearn)
+        bow_embs = df_bow_sklearn.values
+
+        if save_emb:
+            if complex_graph:
+                filename = "bow_complex"
+            else:
+                filename = "bow_simple"
+            filename += "_{max_features}"
+            save_embeddings(
+                data=bow_embs, loc=EMBEDDINGS_PATH, filename=filename, verbose=verbose
+            )
+    return embs_df
+
+
+# def train_broad_weighted():
+#     """
+#     Experiment using
+#     ✓ Broad category targets for classification.
+#     ✓ Stratification in train/val/test split
+#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
+#     """
+#     return train(
+#         config=SWEEP_INIT,
+#         cat_type="broad",
+#         strat_type="sklearn",
+#         sampler="norm",
+#         save_model=True,
+#     )
+
+# def train_ntee_weighted():
+#     """
+#     Experiment using
+#     ✓ NTEE1 category targets for classification.
+#     ✓ Stratification in train/val/test split
+#     ☓ NOT normalizing the training class weights for weighted random sampling in the data loader
+#     """
+#     return train(
+#         config=SWEEP_INIT,
+#         cat_type="ntee",
+#         strat_type="sklearn",
+#         sampler="norm",
+#         save_model=False,
+#     )

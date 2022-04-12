@@ -28,11 +28,18 @@ from typing import (
 import pandas as pd
 import numpy as np
 import datetime
+from datetime import date
 import time
 from collections import Counter
 import random
 
-# Graph time!
+# Ignore excessive warnings
+import logging
+
+logging.propagate = False
+logging.getLogger().setLevel(logging.ERROR)
+
+# Graph
 import networkx as nx
 
 # Writing to parquet
@@ -45,23 +52,13 @@ import torch
 # Progress bars
 from tqdm.notebook import tqdm
 
-# WandB
-import wandb
-
-# Date
-from datetime import date
-
+# ML modules
 # Splitting data
 from sklearn.model_selection import train_test_split
 
 # Preparing data
 from sklearn import preprocessing
 
-# Ignore excessive warnings
-import logging
-
-logging.propagate = False
-logging.getLogger().setLevel(logging.ERROR)
 
 # Get root directory and other directory paths to use in scripts
 PROJECT_ROOT = os.path.dirname(os.path.abspath(os.curdir))

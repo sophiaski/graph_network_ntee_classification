@@ -1,56 +1,56 @@
-from torch.utils.data import Dataset
-from transformers import BertTokenizer
-import torch
-import pandas as pd
+# from torch.utils.data import Dataset
+# from transformers import BertTokenizer
+# import torch
+# import pandas as pd
 
-from torch_geometric.data import InMemoryDataset, Data
-from sklearn.model_selection import train_test_split
-import torch_geometric.transforms as T
+# from torch_geometric.data import InMemoryDataset, Data
+# from sklearn.model_selection import train_test_split
+# import torch_geometric.transforms as T
 
-# custom dataset
-class NGOSimpleDataset(InMemoryDataset):
-    def __init__(self, transform=None):
-        super(NGOSimpleDataset, self).__init__(".", transform, None, None)
 
-        data = Data(edge_index=edge_index)
+# class NGOGraph(InMemoryDataset):
+#     def __init__(self, transform=None):
+#         super(NGOGraph, self).__init__(".", transform, None, None)
 
-        data.num_nodes = G.number_of_nodes()
+#         data = Data(edge_index=edge_index)
 
-        # embedding
-        data.x = torch.from_numpy(embeddings).type(torch.float32)
+#         data.num_nodes = G.number_of_nodes()
 
-        # labels
-        y = torch.from_numpy(labels).type(torch.long)
-        data.y = y.clone().detach()
+#         # embedding
+#         data.x = torch.from_numpy(embeddings).type(torch.float32)
 
-        data.num_classes = 2
+#         # labels
+#         y = torch.from_numpy(labels).type(torch.long)
+#         data.y = y.clone().detach()
 
-        # splitting the data into train, validation and test
-        X_train, X_test, y_train, y_test = train_test_split(
-            pd.Series(list(G.nodes())),
-            pd.Series(labels),
-            test_size=0.30,
-            random_state=42,
-        )
+#         data.num_classes = 2
 
-        n_nodes = G.number_of_nodes()
+#         # splitting the data into train, validation and test
+#         X_train, X_test, y_train, y_test = train_test_split(
+#             pd.Series(list(G.nodes())),
+#             pd.Series(labels),
+#             test_size=0.30,
+#             random_state=42,
+#         )
 
-        # create train and test masks for data
-        train_mask = torch.zeros(n_nodes, dtype=torch.bool)
-        test_mask = torch.zeros(n_nodes, dtype=torch.bool)
-        train_mask[X_train.index] = True
-        test_mask[X_test.index] = True
-        data["train_mask"] = train_mask
-        data["test_mask"] = test_mask
+#         n_nodes = G.number_of_nodes()
 
-        self.data, self.slices = self.collate([data])
+#         # create train and test masks for data
+#         train_mask = torch.zeros(n_nodes, dtype=torch.bool)
+#         test_mask = torch.zeros(n_nodes, dtype=torch.bool)
+#         train_mask[X_train.index] = True
+#         test_mask[X_test.index] = True
+#         data["train_mask"] = train_mask
+#         data["test_mask"] = test_mask
 
-    def _download(self):
-        return
+#         self.data, self.slices = self.collate([data])
 
-    def _process(self):
-        return
+#     def _download(self):
+#         return
 
-    def __repr__(self):
-        return "{}()".format(self.__class__.__name__)
+#     def _process(self):
+#         return
+
+#     def __repr__(self):
+#         return f"{self.__class__.__name__}()"
 
